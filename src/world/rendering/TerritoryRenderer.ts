@@ -9,6 +9,10 @@ export interface TerritoryVisual {
 }
 
 export function addTerritory(scene: THREE.Scene, territory: TerritoryVisual): void {
+  if (territory.polygon.length < 3) {
+    throw new Error('A territory polygon requires at least three points.');
+  }
+
   addTint(scene, territory);
   addBorder(scene, territory);
   addCapital(scene, territory.capital, territory.color);
@@ -46,12 +50,19 @@ function addTint(scene: THREE.Scene, territory: TerritoryVisual): void {
 }
 
 function addBorder(scene: THREE.Scene, territory: TerritoryVisual): void {
+  const first = territory.polygon[0];
+  if (!first) return;
+
   const samples: RibbonSample[] = [];
-  const points = [...territory.polygon, territory.polygon[0]];
+  const points: readonly XZ[] = [...territory.polygon, first];
 
   for (let i = 0; i < points.length - 1; i += 1) {
-    const [ax, az] = points[i];
-    const [bx, bz] = points[i + 1];
+    const current = points[i];
+    const next = points[i + 1];
+    if (!current || !next) continue;
+
+    const [ax, az] = current;
+    const [bx, bz] = next;
     const subdivisions = 10;
 
     for (let step = 0; step < subdivisions; step += 1) {
@@ -65,7 +76,9 @@ function addBorder(scene: THREE.Scene, territory: TerritoryVisual): void {
     }
   }
 
-  const [x, z] = points[points.length - 1];
+  const last = points[points.length - 1];
+  if (!last) return;
+  const [x, z] = last;
   samples.push({ position: new THREE.Vector3(x, terrainHeight(x, z) + 0.085, z), width: 0.065 });
 
   const border = new THREE.Mesh(
