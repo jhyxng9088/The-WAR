@@ -68,7 +68,7 @@ export const STRATEGIC_TERRITORIES: readonly StrategicTerritory[] = [
     'valmere',
     'VALMERE',
     0x4f82dd,
-    [[-63, 23], [-50, 39], [-21, 43], [3, 29], [1, 14], [-17, 5], [-42, 7], [-60, 13]],
+    [[-78, 52], [0, 52], [14, 10], [-8, 8], [-18, -12], [-78, -4]],
     valmereCapital,
     [
       settlement('valmere-ravenstead', 'Ravenstead', 'town', [-49, 25]),
@@ -85,7 +85,7 @@ export const STRATEGIC_TERRITORIES: readonly StrategicTerritory[] = [
     'eldwood',
     'ELDWOOD',
     0x4f8b5a,
-    [[-66, 4], [-48, 17], [-24, 12], [-8, -4], [-17, -26], [-40, -39], [-61, -28], [-69, -13]],
+    [[-78, -4], [-18, -12], [5, -20], [-6, -52], [-78, -52]],
     eldwoodCapital,
     [
       settlement('eldwood-mossford', 'Mossford', 'town', [-56, -6]),
@@ -102,7 +102,7 @@ export const STRATEGIC_TERRITORIES: readonly StrategicTerritory[] = [
     'thalor',
     'THALOR',
     0xd3aa3f,
-    [[-20, 4], [0, 13], [24, 8], [38, -10], [27, -35], [1, -42], [-24, -26], [-30, -8]],
+    [[-18, -12], [-8, 8], [14, 10], [26, -8], [34, -28], [10, -52], [-6, -52], [5, -20]],
     thalorCapital,
     [
       settlement('thalor-westmere', 'Westmere', 'town', [-12, -5]),
@@ -119,7 +119,7 @@ export const STRATEGIC_TERRITORIES: readonly StrategicTerritory[] = [
     'drakar',
     'DRAKAR',
     0xc75b52,
-    [[3, 28], [21, 43], [55, 39], [69, 20], [57, 1], [32, 0], [11, 12]],
+    [[0, 52], [78, 52], [78, 1], [26, -8], [14, 10]],
     drakarCapital,
     [
       settlement('drakar-ironhold', 'Ironhold', 'town', [21, 29]),
@@ -136,7 +136,7 @@ export const STRATEGIC_TERRITORIES: readonly StrategicTerritory[] = [
     'orvan',
     'ORVAN',
     0x7b5aaa,
-    [[27, 2], [49, 5], [68, -8], [63, -35], [39, -43], [18, -31], [18, -13]],
+    [[26, -8], [78, 1], [78, -52], [10, -52], [34, -28]],
     orvanCapital,
     [
       settlement('orvan-highridge', 'Highridge', 'town', [28, -14]),
