@@ -27,49 +27,90 @@ export interface TerrainSample {
   biome: TerrainBiome;
 }
 
+export interface RiverDefinition {
+  points: readonly XZ[];
+  sourceWidth: number;
+  mouthWidth: number;
+}
+
 interface MountainRange {
   path: readonly XZ[];
   width: number;
   amplitude: number;
 }
 
-export const RIVER_PATHS: readonly (readonly XZ[])[] = [
-  [
-    [39, 29], [35, 26], [31, 22], [27, 19], [24, 16], [21, 14], [17, 12], [10, 10],
-    [3, 9], [-5, 9], [-13, 8], [-22, 7], [-31, 8], [-40, 10], [-49, 10], [-58, 8], [-67, 6],
-  ],
-  [
-    [28, 25], [26, 23], [24, 21], [23, 19], [22, 17], [20, 15], [18, 13], [17, 12],
-  ],
-  [
-    [38, -20], [34, -18], [30, -16], [25, -13], [20, -10], [15, -6], [11, -2], [8, 2], [6, 6], [3, 9],
-  ],
-  [
-    [-27, 38], [-31, 34], [-34, 30], [-37, 26], [-41, 22], [-46, 19], [-51, 17], [-57, 16], [-63, 17], [-68, 19],
-  ],
-  [
-    [-8, -29], [-13, -27], [-18, -25], [-23, -22], [-28, -18], [-34, -14], [-41, -11], [-49, -11], [-57, -14], [-64, -18],
-  ],
-  [
-    [42, 24], [46, 20], [50, 16], [54, 11], [58, 6], [62, 1], [66, -5], [69, -12],
-  ],
+export const RIVERS: readonly RiverDefinition[] = [
+  {
+    points: [
+      [47, 33], [43, 30], [39, 27], [35, 25], [32, 22], [28, 20], [25, 17], [21, 16],
+      [18, 13], [14, 12], [10, 9], [6, 10], [1, 8], [-4, 9], [-9, 7], [-14, 8],
+      [-19, 6], [-25, 7], [-31, 5], [-37, 7], [-43, 6], [-49, 8], [-55, 7], [-61, 5], [-67, 4],
+    ],
+    sourceWidth: 0.2,
+    mouthWidth: 0.96,
+  },
+  {
+    points: [
+      [31, 35], [29, 32], [30, 29], [27, 27], [28, 24], [25, 22], [23, 19], [21, 16],
+    ],
+    sourceWidth: 0.11,
+    mouthWidth: 0.38,
+  },
+  {
+    points: [
+      [40, -21], [37, -18], [38, -14], [34, -12], [33, -8], [29, -6], [28, -2], [24, 0],
+      [23, 4], [19, 6], [18, 10], [14, 12],
+    ],
+    sourceWidth: 0.12,
+    mouthWidth: 0.42,
+  },
+  {
+    points: [
+      [-21, 36], [-25, 33], [-27, 29], [-31, 27], [-33, 23], [-37, 22], [-39, 19], [-44, 18],
+      [-48, 16], [-52, 17], [-56, 15], [-61, 16], [-65, 18], [-69, 20],
+    ],
+    sourceWidth: 0.14,
+    mouthWidth: 0.58,
+  },
+  {
+    points: [
+      [8, -30], [4, -29], [1, -27], [-3, -28], [-6, -25], [-10, -24], [-14, -21], [-18, -22],
+      [-21, -18], [-26, -17], [-30, -14], [-35, -15], [-39, -12], [-44, -12], [-49, -14], [-54, -13],
+      [-59, -16], [-64, -19], [-68, -22],
+    ],
+    sourceWidth: 0.15,
+    mouthWidth: 0.64,
+  },
+  {
+    points: [
+      [49, 32], [52, 29], [51, 26], [55, 23], [54, 19], [58, 16], [57, 12], [61, 9],
+      [60, 5], [64, 1], [63, -3], [67, -7], [69, -12],
+    ],
+    sourceWidth: 0.13,
+    mouthWidth: 0.56,
+  },
 ];
 
 const MOUNTAIN_RANGES: readonly MountainRange[] = [
   {
     path: [[-46, -22], [-43, -14], [-40, -6], [-37, 2], [-33, 10], [-29, 18], [-25, 27], [-21, 35]],
-    width: 5.2,
+    width: 4.6,
     amplitude: 1.0,
   },
   {
     path: [[14, 18], [22, 22], [31, 26], [40, 29], [49, 33], [58, 35]],
-    width: 5.8,
+    width: 5.0,
     amplitude: 1.08,
   },
   {
     path: [[-9, -30], [0, -29], [10, -27], [20, -25], [30, -23], [40, -20]],
-    width: 5.6,
-    amplitude: 0.88,
+    width: 5.0,
+    amplitude: 0.9,
+  },
+  {
+    path: [[-9, 14], [-3, 16], [4, 18], [10, 19], [16, 18]],
+    width: 4.3,
+    amplitude: 0.62,
   },
 ];
 
@@ -128,7 +169,7 @@ export function isLandAt(x: number, z: number): boolean {
 
 export function riverDistanceAt(x: number, z: number): number {
   let best = Number.POSITIVE_INFINITY;
-  for (const path of RIVER_PATHS) best = Math.min(best, distanceToPolyline(x, z, path));
+  for (const river of RIVERS) best = Math.min(best, distanceToPolyline(x, z, river.points));
   return best;
 }
 
@@ -169,7 +210,7 @@ export function forestDensityAt(x: number, z: number): number {
   const regional = valueNoise(x * 0.075 + 2.1, z * 0.075 - 5.4) * 0.24;
   const patch = valueNoise(x * 0.23 - 3.8, z * 0.23 + 8.1) * 0.17;
   const wetEnough = smoothRange(moisture, 0.42, 0.76);
-  const highlandPenalty = smoothRange(height, 1.75, 3.15) * 0.72;
+  const highlandPenalty = smoothRange(height, 1.95, 3.6) * 0.72;
   const riverClearing = Math.exp(-Math.pow(riverDistanceAt(x, z), 2) / 2.0) * 0.42;
 
   return clamp01(0.08 + wetEnough * 0.68 + regional + patch - highlandPenalty - mountain * 0.34 - riverClearing);
@@ -184,7 +225,7 @@ export function mountainStrengthAt(x: number, z: number): number {
     best = Math.max(best, core * range.amplitude);
   }
 
-  const breakup = 0.88 + Math.abs(valueNoise(x * 0.12 + 6.4, z * 0.12 - 4.1)) * 0.2;
+  const breakup = 0.86 + Math.abs(valueNoise(x * 0.13 + 6.4, z * 0.13 - 4.1)) * 0.24;
   return clamp01(best * breakup);
 }
 
@@ -204,42 +245,48 @@ function terrainHeightFromSignal(x: number, z: number, signal: number): number {
   }
 
   const inland = smoothstep01(signal / 0.12);
-  const continentalRise = Math.pow(clamp01(signal / 0.82), 0.74) * 0.42;
+  const continentalRise = Math.pow(clamp01(signal / 0.82), 0.72) * 0.52;
   const mountain = mountainStrengthAt(x, z);
 
-  const northPlateau = elongatedGaussian(x, z, -2, 25, 1050, 260, -0.04) * 0.52;
-  const westUpland = elongatedGaussian(x, z, -44, -4, 820, 240, -0.12) * 0.34;
-  const southEastTableland = elongatedGaussian(x, z, 39, -22, 720, 210, 0.08) * 0.4;
+  const northPlateau = elongatedGaussian(x, z, -2, 25, 1050, 260, -0.04) * 0.68;
+  const westUpland = elongatedGaussian(x, z, -44, -4, 820, 240, -0.12) * 0.48;
+  const southEastTableland = elongatedGaussian(x, z, 39, -22, 720, 210, 0.08) * 0.56;
+  const centralShelf = elongatedGaussian(x, z, 17, 2, 1280, 180, 0.3) * 0.34;
+  const northWestRolling = elongatedGaussian(x, z, -49, 24, 780, 175, -0.34) * 0.3;
+  const southCentralRise = elongatedGaussian(x, z, 3, -19, 1080, 210, 0.17) * 0.36;
 
-  const centralPlain = elongatedGaussian(x, z, -5, 8, 1800, 520, 0.03) * 0.34;
-  const eastBasin = elongatedGaussian(x, z, 38, 4, 850, 300, -0.12) * 0.24;
-  const southLowland = elongatedGaussian(x, z, -21, -26, 940, 280, 0.08) * 0.22;
+  const centralPlain = elongatedGaussian(x, z, -5, 8, 1800, 520, 0.03) * 0.42;
+  const eastBasin = elongatedGaussian(x, z, 38, 4, 850, 300, -0.12) * 0.32;
+  const southLowland = elongatedGaussian(x, z, -21, -26, 940, 280, 0.08) * 0.3;
 
-  const macroUndulation = valueNoise(x * 0.045 - 3.4, z * 0.045 + 9.1) * 0.19;
-  const mesoHills = valueNoise(x * 0.115 + 7.6, z * 0.115 - 4.8) * 0.12;
-  const localRelief = valueNoise(x * 0.31 - 12.1, z * 0.31 + 1.3) * 0.04;
+  const macroUndulation = valueNoise(x * 0.045 - 3.4, z * 0.045 + 9.1) * 0.27;
+  const mesoHills = valueNoise(x * 0.115 + 7.6, z * 0.115 - 4.8) * 0.17;
+  const localRelief = valueNoise(x * 0.31 - 12.1, z * 0.31 + 1.3) * 0.052;
   const microRelief = valueNoise(x * 0.72 + 2.7, z * 0.72 - 13.0) * 0.012;
 
-  const crestBreakup = 0.7 + Math.abs(valueNoise(x * 0.18 + 13.1, z * 0.18 - 6.2)) * 0.58;
+  const crestBreakup = 0.72 + Math.abs(valueNoise(x * 0.18 + 13.1, z * 0.18 - 6.2)) * 0.62;
   const crag = Math.abs(valueNoise(x * 0.48 - 9.3, z * 0.48 + 3.6)) * mountain;
-  const mountainShoulder = mountain * (1.0 + crestBreakup * 0.52);
-  const mountainCrest = Math.pow(mountain, 2.35) * (2.35 + crestBreakup * 1.25 + crag * 0.8);
+  const foothills = Math.pow(mountain, 0.62) * 0.42;
+  const mountainShoulder = Math.pow(mountain, 0.9) * (1.12 + crestBreakup * 0.62);
+  const mountainCrest = Math.pow(mountain, 2.5) * (2.55 + crestBreakup * 1.34 + crag * 0.88);
 
   const riverDistance = riverDistanceAt(x, z);
-  const riverValley = Math.exp(-(riverDistance * riverDistance) / 6.2) * 0.28;
-  const riverBed = Math.exp(-(riverDistance * riverDistance) / 0.28) * 0.16;
+  const riverValley = Math.exp(-(riverDistance * riverDistance) / 8.4) * 0.38;
+  const riverBed = Math.exp(-(riverDistance * riverDistance) / 0.32) * 0.18;
 
   const cliffMask = Math.max(
     elongatedGaussian(x, z, -63, -10, 150, 28, -0.16),
     elongatedGaussian(x, z, 61, 17, 145, 26, 0.25),
     elongatedGaussian(x, z, -16, 45, 170, 28, -0.06),
   );
-  const coastCliffs = cliffMask * coastInfluenceFromSignal(signal) * 0.5;
+  const coastCliffs = cliffMask * coastInfluenceFromSignal(signal) * 0.55;
+
+  const uplands = northPlateau + westUpland + southEastTableland + centralShelf + northWestRolling + southCentralRise;
+  const basins = centralPlain + eastBasin + southLowland;
 
   const landHeight = (
-    SEA_LEVEL + 0.03 + inland * 0.5 + continentalRise +
-    (northPlateau + westUpland + southEastTableland - centralPlain - eastBasin - southLowland) * inland +
-    mountainShoulder * inland + mountainCrest * inland +
+    SEA_LEVEL + 0.03 + inland * 0.52 + continentalRise +
+    (uplands - basins) * inland + foothills * inland + mountainShoulder * inland + mountainCrest * inland +
     macroUndulation * inland + mesoHills * inland + localRelief * inland + microRelief * inland -
     (riverValley + riverBed) * inland + coastCliffs
   );
@@ -250,7 +297,7 @@ function terrainHeightFromSignal(x: number, z: number, signal: number): number {
 function moistureFromValues(x: number, z: number, signal: number, coastInfluence: number): number {
   if (signal <= 0) return 1;
 
-  const river = Math.exp(-Math.pow(riverDistanceAt(x, z), 2) / 12.5);
+  const river = Math.exp(-Math.pow(riverDistanceAt(x, z), 2) / 13.5);
   const westMoisture = elongatedGaussian(x, z, -41, 9, 1450, 520, -0.06) * 0.17;
   const northWet = elongatedGaussian(x, z, 0, 31, 1350, 390, 0.02) * 0.13;
   const southEastDry = elongatedGaussian(x, z, 44, -26, 980, 330, -0.1) * 0.25;
@@ -263,16 +310,16 @@ function roughnessFromValues(x: number, z: number, height: number, signal: numbe
   if (signal <= 0) return 0;
 
   const mountain = mountainStrengthAt(x, z);
-  const elevation = smoothRange(height, 1.0, 4.1);
-  const brokenGround = Math.abs(valueNoise(x * 0.17 - 6.1, z * 0.17 + 2.8)) * 0.25;
-  const rockyNoise = Math.abs(valueNoise(x * 0.42 + 9.2, z * 0.42 - 5.0)) * 0.18;
+  const elevation = smoothRange(height, 1.0, 4.6);
+  const brokenGround = Math.abs(valueNoise(x * 0.17 - 6.1, z * 0.17 + 2.8)) * 0.28;
+  const rockyNoise = Math.abs(valueNoise(x * 0.42 + 9.2, z * 0.42 - 5.0)) * 0.2;
   const coastalCliff = coastInfluenceFromSignal(signal) * Math.max(
     elongatedGaussian(x, z, -63, -10, 150, 28, -0.16),
     elongatedGaussian(x, z, 61, 17, 145, 26, 0.25),
     elongatedGaussian(x, z, -16, 45, 170, 28, -0.06),
   );
 
-  return clamp01(0.07 + mountain * 0.58 + elevation * 0.28 + brokenGround + rockyNoise + coastalCliff * 0.34);
+  return clamp01(0.07 + mountain * 0.6 + elevation * 0.3 + brokenGround + rockyNoise + coastalCliff * 0.36);
 }
 
 function fertilityFromValues(
@@ -285,11 +332,11 @@ function fertilityFromValues(
 ): number {
   if (signal <= 0) return 0;
 
-  const river = Math.exp(-Math.pow(riverDistanceAt(x, z), 2) / 10.5);
-  const lowland = 1 - smoothRange(height, 0.85, 2.55);
+  const river = Math.exp(-Math.pow(riverDistanceAt(x, z), 2) / 11.5);
+  const lowland = 1 - smoothRange(height, 0.9, 2.8);
   const temperateMoisture = 1 - Math.abs(moisture - 0.67) * 1.2;
   const roughPenalty = roughness * 0.43;
-  const highPenalty = smoothRange(height, 2.1, 4.2) * 0.52;
+  const highPenalty = smoothRange(height, 2.35, 4.7) * 0.52;
 
   return clamp01(0.08 + lowland * 0.36 + river * 0.36 + clamp01(temperateMoisture) * 0.28 - roughPenalty - highPenalty);
 }
@@ -304,8 +351,8 @@ function biomeFromValues(
 ): TerrainBiome {
   if (signal <= 0 || height <= SEA_LEVEL) return 'sea';
   if (coastInfluence > 0.5 && height < 0.3) return moisture > 0.72 ? 'wetland' : 'shore';
-  if (roughness > 0.69 || height > 3.25) return 'rocky';
-  if (height > 1.65 || roughness > 0.5) return 'highland';
+  if (roughness > 0.69 || height > 3.45) return 'rocky';
+  if (height > 1.75 || roughness > 0.5) return 'highland';
   if (moisture > 0.8 && height < 0.78) return 'wetland';
   if (fertility > 0.64) return 'fertile-lowland';
   if (moisture < 0.35) return 'dry-grassland';
