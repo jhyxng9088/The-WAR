@@ -13,7 +13,7 @@ import {
   terrainSampleAt,
 } from '../src/world/WorldField.ts';
 
-const WIDTH = 704;
+const WIDTH = 768;
 const HEIGHT = Math.round(WIDTH * WORLD_DEPTH / WORLD_WIDTH);
 const PIXELS = WIDTH * HEIGHT;
 const DX = WORLD_WIDTH / (WIDTH - 1);
@@ -45,13 +45,13 @@ for (let py = 0; py < HEIGHT; py += 1) {
     mountain[i] = mountainStrengthAt(x, z);
     forest[i] = forestDensityAt(x, z);
     const riverDistance = riverDistanceAt(x, z);
-    river[i] = Math.exp(-(riverDistance * riverDistance) / 13.5);
+    river[i] = Math.exp(-(riverDistance * riverDistance) / 10.5);
     land[i] = sample.biome === 'sea' || sample.height <= SEA_LEVEL ? 0 : 1;
   }
 }
 
 const rgba = new Uint8Array(PIXELS * 4);
-const sun = normalize3(-0.48, 0.82, 0.3);
+const sun = normalize3(-0.46, 0.82, 0.34);
 
 for (let py = 0; py < HEIGHT; py += 1) {
   const z = WORLD_HALF_DEPTH - py * DZ;
@@ -83,55 +83,70 @@ for (let py = 0; py < HEIGHT; py += 1) {
     const woods = forest[i] ?? 0;
     const basin = river[i] ?? 0;
 
-    const macro = valueNoise(x * 0.026 + 7.4, z * 0.026 - 4.2);
-    const meso = valueNoise(x * 0.081 - 5.1, z * 0.081 + 8.8);
-    const fine = valueNoise(x * 0.31 + 11.7, z * 0.31 + 2.2);
-    const grain = (deterministic01(x * 3.1, z * 3.1, 73) - 0.5) * 2;
+    const macro = fbm(x * 0.012 + 4.7, z * 0.012 - 7.9, 3);
+    const regional = fbm(x * 0.032 - 9.1, z * 0.032 + 5.4, 3);
+    const detail = fbm(x * 0.095 + 13.2, z * 0.095 - 2.8, 3);
+    const grain = (deterministic01(x * 1.9, z * 1.9, 73) - 0.5) * 2;
 
-    let color = mix3([139, 126, 69], [88, 119, 59], smooth(0.22, 0.66, wet));
-    color = mix3(color, [49, 94, 48], smooth(0.57, 0.9, wet) * (0.42 + fertile * 0.45));
-    color = mix3(color, [124, 102, 61], smooth(0.56, 0.91, 1 - wet) * (0.15 + (1 - fertile) * 0.3));
+    const dry = [142, 127, 73] as Vec3;
+    const meadow = [92, 122, 64] as Vec3;
+    const lush = [58, 103, 55] as Vec3;
+    let color = mix3(dry, meadow, smooth(0.22, 0.66, wet));
+    color = mix3(color, lush, smooth(0.57, 0.9, wet) * (0.34 + fertile * 0.42));
+    color = mix3(color, [128, 105, 65], smooth(0.58, 0.92, 1 - wet) * (0.12 + (1 - fertile) * 0.26));
 
-    const floodplain = basin * (1 - smooth(1.5, 3.2, elevation));
-    color = mix3(color, [69, 109, 68], floodplain * (0.25 + fertile * 0.34));
+    const floodplain = basin * (1 - smooth(1.6, 3.1, elevation));
+    color = mix3(color, [75, 112, 72], floodplain * (0.16 + fertile * 0.22));
 
-    const forestSignal = woods + macro * 0.08 + meso * 0.11;
-    const forestMass = smooth(0.27, 0.63, forestSignal) * (1 - smooth(2.25, 4.35, elevation) * 0.7);
-    const canopy = 0.5 + 0.5 * Math.sin(x * 2.7 + fine * 4.2) * Math.sin(z * 2.45 - macro * 3.1);
-    const forestTone = mix3([35, 75, 39], [19, 55, 30], smooth(0.53, 0.9, woods));
-    forestTone[0] += (canopy - 0.5) * 8;
-    forestTone[1] += (canopy - 0.5) * 13;
-    forestTone[2] += (canopy - 0.5) * 7;
-    color = mix3(color, forestTone, forestMass * 0.91);
+    const forestSignal = woods + macro * 0.05 + regional * 0.07 - basin * 0.12;
+    const forestMass = smooth(0.33, 0.69, forestSignal) * (1 - smooth(2.4, 4.35, elevation) * 0.78);
+    const canopyNoise = clamp01(0.52 + fbm(x * 0.13 + 8.2, z * 0.13 - 3.4, 3) * 0.42 + detail * 0.12);
+    const forestTone = mix3([42, 82, 43], [24, 61, 33], smooth(0.52, 0.9, woods));
+    const canopyTone = mix3(forestTone, [18, 49, 28], smooth(0.62, 0.93, canopyNoise) * 0.34);
+    color = mix3(color, canopyTone, forestMass * 0.86);
 
-    const highland = smooth(1.1, 3.35, elevation);
-    const steep = smooth(0.035, 0.22, slope);
-    const mountainCore = smooth(0.17, 0.73, mount);
-    const fracture = clamp01(Math.abs(Math.sin(x * 0.72 + z * 0.21 + fine * 3.8)) * 0.58 + Math.abs(meso) * 0.3 + steep * 0.35);
-    const rockMask = clamp01(steep * 0.85 + mountainCore * smooth(0.9, 2.7, elevation) * (0.56 + fracture * 0.42) + rough * 0.14 + highland * 0.08);
-    let rock = mix3([112, 105, 91], [76, 78, 76], fracture);
-    rock = mix3(rock, [48, 53, 52], smooth(0.7, 0.98, fracture) * (0.42 + steep * 0.35));
-    color = mix3(color, rock, rockMask * 0.95);
+    const highland = smooth(1.15, 3.45, elevation);
+    const steep = smooth(0.035, 0.21, slope);
+    const mountainCore = smooth(0.18, 0.74, mount);
+    const ridgeBroad = ridgedFbm(x * 0.035 + 3.1, z * 0.035 - 6.8, 3);
+    const ridgeFine = ridgedFbm(x * 0.11 - 8.4, z * 0.11 + 4.2, 3);
+    const fracture = clamp01(ridgeBroad * 0.5 + ridgeFine * 0.25 + Math.abs(detail) * 0.12 + steep * 0.32);
+    const rockMask = clamp01(
+      steep * 0.78 +
+      mountainCore * smooth(0.95, 2.75, elevation) * (0.52 + ridgeBroad * 0.42) +
+      rough * 0.12 +
+      highland * 0.07,
+    );
+    let rock = mix3([118, 111, 98], [82, 84, 81], fracture);
+    rock = mix3(rock, [51, 56, 55], smooth(0.7, 0.96, fracture) * (0.3 + steep * 0.32));
+    color = mix3(color, rock, rockMask * 0.92);
 
-    const coastMask = (coast[i] ?? 0) * (1 - smooth(0.1, 0.62, elevation));
-    const rockyCoast = coastMask * smooth(0.08, 0.3, slope + rough * 0.22);
-    color = mix3(color, mix3([167, 142, 86], [81, 101, 72], wet * 0.62), coastMask * (1 - rockyCoast) * 0.82);
-    color = mix3(color, [54, 59, 56], rockyCoast * 0.78);
+    const coastMask = (coast[i] ?? 0) * (1 - smooth(0.12, 0.66, elevation));
+    const rockyCoast = coastMask * smooth(0.09, 0.3, slope + rough * 0.2);
+    color = mix3(color, mix3([169, 145, 91], [88, 104, 77], wet * 0.58), coastMask * (1 - rockyCoast) * 0.74);
+    color = mix3(color, [58, 63, 59], rockyCoast * 0.66);
 
-    const northness = smooth(42, 100, z);
-    const snow = smooth(6.4, 7.55, elevation) * northness * smooth(0.58, 0.9, mount);
-    color = mix3(color, [194, 199, 198], snow * (0.22 + fracture * 0.2));
+    const northness = smooth(48, 105, z);
+    const snow = smooth(6.55, 7.65, elevation) * northness * smooth(0.61, 0.91, mount);
+    color = mix3(color, [200, 203, 201], snow * (0.16 + ridgeFine * 0.18));
 
-    if (fertile > 0.64 && elevation < 1.3 && woods < 0.48 && basin < 0.55) {
-      const fieldBand = Math.abs(Math.sin(x * 0.46 + Math.floor(z / 7) * 0.9));
-      const fieldMask = smooth(0.82, 0.98, fieldBand) * smooth(0.64, 0.87, fertile) * 0.12;
-      color = mix3(color, [150, 132, 73], fieldMask);
+    if (fertile > 0.67 && elevation < 1.35 && woods < 0.42 && basin < 0.4) {
+      const gx = Math.floor((x + WORLD_HALF_WIDTH) / 9.5);
+      const gz = Math.floor((z + WORLD_HALF_DEPTH) / 8.5);
+      const fieldChance = deterministic01(gx, gz, 19);
+      const localX = fract((x + WORLD_HALF_WIDTH) / 9.5);
+      const localZ = fract((z + WORLD_HALF_DEPTH) / 8.5);
+      const edge = Math.min(localX, 1 - localX, localZ, 1 - localZ);
+      const fieldMask = fieldChance > 0.58 ? smooth(0.06, 0.18, edge) * smooth(0.67, 0.88, fertile) * 0.11 : 0;
+      color = mix3(color, [151, 132, 76], fieldMask);
     }
 
-    const light = 0.54 + Math.max(0, dot3(normal, sun)) * 0.58;
-    const occlusion = 1 - steep * 0.16 - mountainCore * 0.06 - forestMass * 0.035;
-    const texture = 1 + meso * 0.035 + fine * 0.025 + grain * (0.018 + rockMask * 0.025 + forestMass * 0.018);
-    color = color.map((channel) => channel * light * occlusion * texture) as Vec3;
+    const directional = Math.max(0, dot3(normal, sun));
+    const light = 0.62 + directional * 0.46;
+    const mountainShade = 1 - mountainCore * 0.045 - steep * 0.13;
+    const forestShade = 1 - forestMass * 0.028;
+    const texture = 1 + regional * 0.024 + detail * 0.018 + grain * (0.012 + rockMask * 0.012 + forestMass * 0.01);
+    color = color.map((channel) => channel * light * mountainShade * forestShade * texture) as Vec3;
 
     rgba[o] = byte(color[0]);
     rgba[o + 1] = byte(color[1]);
@@ -172,6 +187,39 @@ function smooth(min: number, max: number, value: number): number {
 
 function byte(value: number): number {
   return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function fract(value: number): number {
+  return value - Math.floor(value);
+}
+
+function fbm(x: number, z: number, octaves: number): number {
+  let value = 0;
+  let amplitude = 0.55;
+  let frequency = 1;
+  let normalizer = 0;
+  for (let i = 0; i < octaves; i += 1) {
+    value += valueNoise(x * frequency, z * frequency) * amplitude;
+    normalizer += amplitude;
+    frequency *= 2.03;
+    amplitude *= 0.5;
+  }
+  return normalizer > 0 ? value / normalizer : 0;
+}
+
+function ridgedFbm(x: number, z: number, octaves: number): number {
+  let value = 0;
+  let amplitude = 0.58;
+  let frequency = 1;
+  let normalizer = 0;
+  for (let i = 0; i < octaves; i += 1) {
+    const n = valueNoise(x * frequency, z * frequency);
+    value += (1 - Math.abs(n)) * amplitude;
+    normalizer += amplitude;
+    frequency *= 2.09;
+    amplitude *= 0.48;
+  }
+  return normalizer > 0 ? value / normalizer : 0;
 }
 
 function valueNoise(x: number, z: number): number {
