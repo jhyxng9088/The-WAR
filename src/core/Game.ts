@@ -22,10 +22,10 @@ export class Game {
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.96;
+    this.renderer.toneMappingExposure = 1.04;
 
-    this.scene.background = new THREE.Color(0x657477);
-    this.scene.fog = new THREE.Fog(0x657477, 205, 540);
+    this.scene.background = new THREE.Color(0x55717c);
+    this.scene.fog = new THREE.Fog(0x55717c, 330, 760);
 
     this.camera = new WorldCamera();
     this.input = new WorldInput(canvas, this.camera);
