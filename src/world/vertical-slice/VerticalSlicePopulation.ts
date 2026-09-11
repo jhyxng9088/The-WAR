@@ -34,6 +34,7 @@ function createInstances(
   placements: typeof SLICE_TREES,
 ): THREE.InstancedMesh {
   const geometry = source.geometry.clone();
+  if (!geometry.getAttribute('normal')) geometry.computeVertexNormals();
   const material = Array.isArray(source.material)
     ? source.material.map((entry) => entry.clone())
     : source.material.clone();
@@ -45,8 +46,8 @@ function createInstances(
   const rotation = new THREE.Quaternion();
 
   placements.forEach(([x, z, , size, angle], index) => {
-    position.set(x, heightAt(x, z) + 0.04, z);
-    scale.setScalar(size * 1.16);
+    position.set(x, heightAt(x, z) + 0.035, z);
+    scale.setScalar(size * 0.96);
     yaw.setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle);
     rotation.copy(yaw).multiply(UP_CORRECTION);
     matrix.compose(position, rotation, scale);
@@ -61,19 +62,21 @@ function createInstances(
 
 function addSettlement(scene: THREE.Scene, source: THREE.Object3D): void {
   const [x, z] = SLICE_CITY;
-  source.position.set(x, heightAt(x, z) + 0.05, z);
+  source.position.set(x, heightAt(x, z) + 0.04, z);
   source.quaternion.copy(UP_CORRECTION);
-  source.scale.setScalar(1.32);
+  source.scale.setScalar(0.78);
   source.name = 'AuthoredSettlement';
   source.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return;
+    if (!object.geometry.getAttribute('normal')) object.geometry.computeVertexNormals();
     object.castShadow = false;
     object.receiveShadow = true;
-    if (!Array.isArray(object.material)) {
-      object.material.vertexColors = true;
-      object.material.roughness = 0.9;
-      object.material.metalness = 0;
-      object.material.needsUpdate = true;
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    for (const material of materials) {
+      if (!(material instanceof THREE.MeshStandardMaterial)) continue;
+      material.roughness = 0.94;
+      material.metalness = 0;
+      material.needsUpdate = true;
     }
   });
   scene.add(source);
