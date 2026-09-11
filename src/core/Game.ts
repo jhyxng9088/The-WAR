@@ -34,6 +34,8 @@ export class Game {
     this.resize();
 
     window.addEventListener('resize', this.resize, { passive: true });
+    window.addEventListener('orientationchange', this.resize, { passive: true });
+    window.visualViewport?.addEventListener('resize', this.resize, { passive: true });
   }
 
   start(): void {
@@ -53,12 +55,24 @@ export class Game {
     this.frameId = null;
     this.input.dispose();
     window.removeEventListener('resize', this.resize);
+    window.removeEventListener('orientationchange', this.resize);
+    window.visualViewport?.removeEventListener('resize', this.resize);
     this.renderer.dispose();
   }
 
   private readonly resize = (): void => {
-    const width = Math.max(1, this.canvas.clientWidth);
-    const height = Math.max(1, this.canvas.clientHeight);
+    const viewport = window.visualViewport;
+    const width = Math.max(1, Math.round(viewport?.width ?? window.innerWidth ?? this.canvas.clientWidth));
+    const height = Math.max(1, Math.round(viewport?.height ?? window.innerHeight ?? this.canvas.clientHeight));
+
+    const host = this.canvas.parentElement;
+    if (host) {
+      host.style.width = `${width}px`;
+      host.style.height = `${height}px`;
+    }
+
+    this.canvas.style.width = `${width}px`;
+    this.canvas.style.height = `${height}px`;
     this.renderer.setSize(width, height, false);
     this.camera.resize(width, height);
   };
