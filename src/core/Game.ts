@@ -2,12 +2,14 @@ import * as THREE from 'three';
 import { WorldCamera } from '../camera/WorldCamera';
 import { WorldInput } from '../input/WorldInput';
 import { createPrototypeWorld } from '../world/createPrototypeWorld';
+import { RenderPerformance } from './RenderPerformance';
 
 export class Game {
   private readonly scene = new THREE.Scene();
   private readonly renderer: THREE.WebGLRenderer;
   private readonly camera: WorldCamera;
   private readonly input: WorldInput;
+  private readonly performance: RenderPerformance;
   private frameId: number | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
@@ -15,15 +17,18 @@ export class Game {
       canvas,
       antialias: true,
       powerPreference: 'high-performance',
+      alpha: false,
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.02;
 
-    this.scene.background = new THREE.Color(0x88aebb);
-    this.scene.fog = new THREE.Fog(0x88aebb, 36, 74);
+    this.scene.background = new THREE.Color(0x6b8990);
+    this.scene.fog = new THREE.Fog(0x6b8990, 54, 94);
 
     this.camera = new WorldCamera();
     this.input = new WorldInput(canvas, this.camera);
+    this.performance = new RenderPerformance(this.renderer);
 
     createPrototypeWorld(this.scene);
     this.resize();
@@ -34,12 +39,13 @@ export class Game {
   start(): void {
     if (this.frameId !== null) return;
 
-    const render = (): void => {
-      this.frameId = requestAnimationFrame(render);
+    const render = (timestamp: number): void => {
+      this.performance.sample(timestamp);
       this.renderer.render(this.scene, this.camera.camera);
+      this.frameId = requestAnimationFrame(render);
     };
 
-    render();
+    this.frameId = requestAnimationFrame(render);
   }
 
   dispose(): void {
