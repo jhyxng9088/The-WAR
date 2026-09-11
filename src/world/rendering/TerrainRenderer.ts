@@ -5,11 +5,10 @@ import {
   TERRAIN_SEGMENTS_X,
   TERRAIN_SEGMENTS_Z,
   WORLD_DEPTH,
+  WORLD_HALF_DEPTH,
+  WORLD_HALF_WIDTH,
   WORLD_WIDTH,
-  forestDensityAt,
   islandSignal,
-  mountainStrengthAt,
-  riverDistanceAt,
   terrainSampleAt,
 } from '../WorldField';
 import { createLandSurfaceMaterial, createOceanSurfaceMaterial } from './TerrainSurfaceMaterial';
@@ -61,43 +60,28 @@ function createLand(): THREE.Mesh {
     TERRAIN_SEGMENTS_Z,
   );
   const positions = geometry.attributes.position as THREE.BufferAttribute;
-  const moisture = new Float32Array(positions.count);
-  const fertility = new Float32Array(positions.count);
-  const roughness = new Float32Array(positions.count);
-  const coast = new Float32Array(positions.count);
-  const mountain = new Float32Array(positions.count);
-  const forest = new Float32Array(positions.count);
-  const river = new Float32Array(positions.count);
+  const uv = geometry.attributes.uv as THREE.BufferAttribute;
 
   for (let i = 0; i < positions.count; i += 1) {
     const x = positions.getX(i);
     const z = -positions.getY(i);
-    const sample = terrainSampleAt(x, z);
-    const riverDistance = riverDistanceAt(x, z);
+    positions.setZ(i, terrainSampleAt(x, z).height);
 
-    positions.setZ(i, sample.height);
-    moisture[i] = sample.moisture;
-    fertility[i] = sample.fertility;
-    roughness[i] = sample.roughness;
-    coast[i] = sample.coastInfluence;
-    mountain[i] = mountainStrengthAt(x, z);
-    forest[i] = forestDensityAt(x, z);
-    river[i] = Math.exp(-(riverDistance * riverDistance) / 14.0);
+    // The baked texture is authored north-up: +Z is the top of the image.
+    uv.setXY(
+      i,
+      THREE.MathUtils.clamp((x + WORLD_HALF_WIDTH) / WORLD_WIDTH, 0, 1),
+      THREE.MathUtils.clamp((z + WORLD_HALF_DEPTH) / WORLD_DEPTH, 0, 1),
+    );
   }
 
-  geometry.setAttribute('aMoisture', new THREE.BufferAttribute(moisture, 1));
-  geometry.setAttribute('aFertility', new THREE.BufferAttribute(fertility, 1));
-  geometry.setAttribute('aRoughness', new THREE.BufferAttribute(roughness, 1));
-  geometry.setAttribute('aCoast', new THREE.BufferAttribute(coast, 1));
-  geometry.setAttribute('aMountain', new THREE.BufferAttribute(mountain, 1));
-  geometry.setAttribute('aForest', new THREE.BufferAttribute(forest, 1));
-  geometry.setAttribute('aRiver', new THREE.BufferAttribute(river, 1));
-
+  positions.needsUpdate = true;
+  uv.needsUpdate = true;
   geometry.computeVertexNormals();
   geometry.rotateX(-Math.PI / 2);
   geometry.computeBoundingSphere();
 
   const mesh = new THREE.Mesh(geometry, createLandSurfaceMaterial());
-  mesh.receiveShadow = true;
+  mesh.receiveShadow = false;
   return mesh;
 }
