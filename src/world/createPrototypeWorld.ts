@@ -1,12 +1,25 @@
 import * as THREE from 'three';
+import { MAP_SCALE, type XZ } from './WorldField';
 import { addWorldLighting } from './rendering/LightingRenderer';
 import { addRiver } from './rendering/RiverRenderer';
 import { addTerrain } from './rendering/TerrainRenderer';
 import { addTerritory, type TerritoryVisual } from './rendering/TerritoryRenderer';
 import { addVegetation } from './rendering/VegetationRenderer';
 
+function scalePoint([x, z]: XZ): XZ {
+  return [x * MAP_SCALE, z * MAP_SCALE];
+}
+
+function scaleTerritory(territory: TerritoryVisual): TerritoryVisual {
+  return {
+    color: territory.color,
+    capital: scalePoint(territory.capital),
+    polygon: territory.polygon.map(scalePoint),
+  };
+}
+
 const TERRITORIES: readonly TerritoryVisual[] = [
-  {
+  scaleTerritory({
     color: 0x4d83e8,
     capital: [-13.2, 5.5],
     polygon: [
@@ -18,8 +31,8 @@ const TERRITORIES: readonly TerritoryVisual[] = [
       [-13.1, 2.0],
       [-16.8, 3.5],
     ],
-  },
-  {
+  }),
+  scaleTerritory({
     color: 0xe46661,
     capital: [14.8, -2.8],
     polygon: [
@@ -31,7 +44,7 @@ const TERRITORIES: readonly TerritoryVisual[] = [
       [14.5, -7.0],
       [10.9, -5.1],
     ],
-  },
+  }),
 ];
 
 export function createPrototypeWorld(scene: THREE.Scene): void {
