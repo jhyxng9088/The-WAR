@@ -5,6 +5,7 @@ import {
   SLICE_DEPTH,
   SLICE_RIVER,
   SLICE_WIDTH,
+  createForestTexture,
   createSplatTexture,
   heightAt,
   verticalSliceAssetUrl,
@@ -15,11 +16,11 @@ const TERRAIN_SEGMENTS_Z = 88;
 
 export function addVerticalSliceTerrain(scene: THREE.Scene): void {
   scene.add(createTerrainMesh());
-  scene.add(createRibbon(SLICE_RIVER, 1.05, 2.35, 0x315d66, 0.94, 0.08));
-  scene.add(createRibbon(SLICE_BORDER, 0.2, 0.2, 0xd6c27f, 0.8, 0.12));
+  scene.add(createRibbon(SLICE_RIVER, 1.18, 2.7, 0x3d6971, 0.96, 0.09));
+  scene.add(createRibbon(SLICE_BORDER, 0.28, 0.28, 0xd8c47f, 0.88, 0.14));
   scene.add(createRibbon([
     [-34, -4], [-17, -7], [1, -10], SLICE_CITY, [34, -19], [50, -25],
-  ], 0.34, 0.42, 0xc3ad7b, 0.76, 0.1));
+  ], 0.42, 0.52, 0xbda977, 0.82, 0.11));
 }
 
 function createTerrainMesh(): THREE.Mesh {
@@ -40,11 +41,12 @@ function createTerrainMesh(): THREE.Mesh {
   geometry.computeBoundingSphere();
 
   const loader = new THREE.TextureLoader();
-  const grass = configureTile(loader.load(verticalSliceAssetUrl('grass.svg')), 18, 13);
-  const rock = configureTile(loader.load(verticalSliceAssetUrl('rock.svg')), 22, 16);
-  const soil = configureTile(loader.load(verticalSliceAssetUrl('soil.svg')), 17, 12);
-  const sand = configureTile(loader.load(verticalSliceAssetUrl('sand.svg')), 20, 15);
+  const grass = configureTile(loader.load(verticalSliceAssetUrl('grass.svg')));
+  const rock = configureTile(loader.load(verticalSliceAssetUrl('rock.svg')));
+  const soil = configureTile(loader.load(verticalSliceAssetUrl('soil.svg')));
+  const sand = configureTile(loader.load(verticalSliceAssetUrl('sand.svg')));
   const splat = createSplatTexture();
+  const forest = createForestTexture();
 
   const material = new THREE.ShaderMaterial({
     uniforms: {
@@ -53,6 +55,7 @@ function createTerrainMesh(): THREE.Mesh {
       uSoil: { value: soil },
       uSand: { value: sand },
       uSplat: { value: splat },
+      uForest: { value: forest },
     },
     vertexShader: `
       varying vec2 vUv;
@@ -72,6 +75,7 @@ function createTerrainMesh(): THREE.Mesh {
       uniform sampler2D uSoil;
       uniform sampler2D uSand;
       uniform sampler2D uSplat;
+      uniform sampler2D uForest;
       varying vec2 vUv;
       varying vec3 vNormalWorld;
       varying vec3 vWorld;
@@ -88,22 +92,26 @@ function createTerrainMesh(): THREE.Mesh {
         soilWeight /= total;
         sandWeight /= total;
 
-        vec3 grass = texture2D(uGrass, vUv).rgb;
-        vec3 rock = texture2D(uRock, vUv).rgb;
-        vec3 soil = texture2D(uSoil, vUv).rgb;
-        vec3 sand = texture2D(uSand, vUv).rgb;
+        vec3 grass = texture2D(uGrass, vUv * vec2(18.0, 13.0)).rgb;
+        vec3 rock = texture2D(uRock, vUv * vec2(22.0, 16.0)).rgb;
+        vec3 soil = texture2D(uSoil, vUv * vec2(17.0, 12.0)).rgb;
+        vec3 sand = texture2D(uSand, vUv * vec2(20.0, 15.0)).rgb;
         vec3 base = grass * grassWeight + rock * rockWeight + soil * soilWeight + sand * sandWeight;
 
+        float forestMass = texture2D(uForest, vUv).r;
+        vec3 forestFloor = vec3(0.12, 0.22, 0.105);
+        base = mix(base, mix(base * 0.56, forestFloor, 0.44), forestMass * 0.72);
+
         float territorySide = smoothstep(-2.0, 2.0, vWorld.z - (vWorld.x * 0.14 - 6.0));
-        vec3 westTint = vec3(0.31, 0.41, 0.30);
-        vec3 eastTint = vec3(0.45, 0.34, 0.28);
-        base = mix(base, mix(eastTint, westTint, territorySide), 0.065);
+        vec3 westTint = vec3(0.28, 0.39, 0.29);
+        vec3 eastTint = vec3(0.46, 0.34, 0.27);
+        base = mix(base, mix(eastTint, westTint, territorySide), 0.09);
 
         vec3 normal = normalize(vNormalWorld);
-        vec3 lightDir = normalize(vec3(-0.48, 0.82, 0.34));
+        vec3 lightDir = normalize(vec3(-0.52, 0.78, 0.34));
         float diffuse = max(dot(normal, lightDir), 0.0);
         float slopeShade = clamp(normal.y, 0.0, 1.0);
-        float light = 0.48 + diffuse * 0.67 + slopeShade * 0.08;
+        float light = 0.42 + diffuse * 0.72 + slopeShade * 0.08;
         vec3 color = base * light;
         gl_FragColor = vec4(color, 1.0);
       }
@@ -115,10 +123,9 @@ function createTerrainMesh(): THREE.Mesh {
   return mesh;
 }
 
-function configureTile(texture: THREE.Texture, repeatX: number, repeatY: number): THREE.Texture {
+function configureTile(texture: THREE.Texture): THREE.Texture {
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(repeatX, repeatY);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
   return texture;
