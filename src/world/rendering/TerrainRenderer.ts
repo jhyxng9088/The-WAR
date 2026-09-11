@@ -24,17 +24,17 @@ const COLORS = {
   shallowWater: new THREE.Color(0x75988e),
   wetSand: new THREE.Color(0x8a8268),
   dryCoast: new THREE.Color(0xa6926a),
-  neutralGrass: new THREE.Color(0x6b7752),
-  meadow: new THREE.Color(0x74835a),
-  dryGrass: new THREE.Color(0x8b7950),
-  fertileGrass: new THREE.Color(0x4d7045),
-  deepFertile: new THREE.Color(0x3f6440),
-  wetland: new THREE.Color(0x48614d),
-  earth: new THREE.Color(0x74684f),
-  highland: new THREE.Color(0x66675a),
-  roughGround: new THREE.Color(0x6b6458),
-  rock: new THREE.Color(0x77716a),
-  exposedRock: new THREE.Color(0x928a7d),
+  neutralGrass: new THREE.Color(0x66784e),
+  meadow: new THREE.Color(0x718758),
+  dryGrass: new THREE.Color(0x8c7c51),
+  fertileGrass: new THREE.Color(0x496f43),
+  deepFertile: new THREE.Color(0x3b6040),
+  wetland: new THREE.Color(0x455f4c),
+  earth: new THREE.Color(0x75664d),
+  highland: new THREE.Color(0x62675a),
+  roughGround: new THREE.Color(0x696156),
+  rock: new THREE.Color(0x79736b),
+  exposedRock: new THREE.Color(0x968d80),
 };
 
 export function addTerrain(scene: THREE.Scene): void {
@@ -178,6 +178,9 @@ function terrainColor(
   color.lerp(COLORS.rock, rockySlope * 0.78);
   color.lerp(COLORS.exposedRock, summit * 0.62 + steep * summit * 0.2);
 
+  const strata = 0.5 + Math.sin(sample.height * 10.6 + x * 0.042 - z * 0.034) * 0.5;
+  color.lerp(COLORS.exposedRock, strata * rockySlope * 0.115);
+
   const coastHeightMask = 1 - THREE.MathUtils.smoothstep(sample.height, 0.025, 0.5);
   const coastWeight = sample.coastInfluence * coastHeightMask;
   if (coastWeight > 0.001) {
@@ -196,8 +199,15 @@ function terrainColor(
     regionalVariation * 0.022,
   );
 
+  const fineRelief = (
+    Math.sin(x * 0.19 + Math.sin(z * 0.052) * 1.4) +
+    Math.sin(z * 0.23 - x * 0.041) * 0.62
+  ) / 1.62;
+  const fineStrength = 0.006 + sample.roughness * 0.02 + rockySlope * 0.014;
+  color.offsetHSL(0, fineRelief * 0.004, fineRelief * fineStrength);
+
   const sunFacing = THREE.MathUtils.clamp((normal.dot(SUN_DIRECTION) + 0.18) / 1.18, 0, 1);
-  const hillshade = 0.82 + sunFacing * 0.22 + normal.y * 0.045;
+  const hillshade = 0.81 + sunFacing * 0.24 + normal.y * 0.045;
   color.multiplyScalar(hillshade);
 
   return color;
