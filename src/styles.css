@@ -2,17 +2,19 @@ html,
 body,
 #app {
   width: 100%;
-  height: 100%;
   margin: 0;
 }
 
 html,
 body {
+  min-height: 100%;
+  height: 100dvh;
   overflow: hidden;
   background: #0d1820;
   color: #f4f7f8;
   font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
   overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
 }
 
 * {
@@ -21,8 +23,14 @@ body {
 }
 
 #app {
-  position: relative;
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  min-height: 100svh;
+  overflow: hidden;
   isolation: isolate;
+  background: #0d1820;
 }
 
 #game-canvas {
@@ -49,4 +57,12 @@ body {
   line-height: 1;
   pointer-events: none;
   user-select: none;
+}
+
+@supports not (height: 100dvh) {
+  html,
+  body,
+  #app {
+    height: -webkit-fill-available;
+  }
 }
