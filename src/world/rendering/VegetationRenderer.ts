@@ -24,50 +24,44 @@ export function addVegetation(scene: THREE.Scene): void {
 
 function addForestInstances(scene: THREE.Scene): void {
   const points: InstancePoint[] = [];
-  const spacing = 0.72;
+  const spacing = 1.25;
 
-  for (let x = -WORLD_HALF_WIDTH + 2; x <= WORLD_HALF_WIDTH - 2; x += spacing) {
-    for (let z = -WORLD_HALF_DEPTH + 2; z <= WORLD_HALF_DEPTH - 2; z += spacing) {
-      const jitterX = (deterministic01(x, z, 3) - 0.5) * spacing * 0.78;
-      const jitterZ = (deterministic01(x, z, 7) - 0.5) * spacing * 0.78;
+  for (let x = -WORLD_HALF_WIDTH + 3; x <= WORLD_HALF_WIDTH - 3; x += spacing) {
+    for (let z = -WORLD_HALF_DEPTH + 3; z <= WORLD_HALF_DEPTH - 3; z += spacing) {
+      const jitterX = (deterministic01(x, z, 3) - 0.5) * spacing * 0.9;
+      const jitterZ = (deterministic01(x, z, 7) - 0.5) * spacing * 0.9;
       const px = x + jitterX;
       const pz = z + jitterZ;
 
       if (!isLandAt(px, pz)) continue;
 
       const density = forestDensityAt(px, pz);
-      const roll = deterministic01(px * 2.1, pz * 2.1, 11);
-      if (density < 0.43 || roll > density * 0.86) continue;
+      const roll = deterministic01(px * 1.7, pz * 1.7, 11);
+      if (density < 0.48 || roll > density * 0.9) continue;
 
       points.push({
         x: px,
         y: terrainHeight(px, pz),
         z: pz,
-        scale: 0.62 + deterministic01(px, pz, 17) * 0.58,
+        scale: 0.72 + deterministic01(px, pz, 17) * 0.58,
         rotation: deterministic01(px, pz, 23) * Math.PI * 2,
       });
     }
   }
 
-  const trunkGeometry = new THREE.CylinderGeometry(0.045, 0.07, 0.46, 6);
-  trunkGeometry.translate(0, 0.23, 0);
-  const lowerCrownGeometry = new THREE.DodecahedronGeometry(0.31, 0);
-  lowerCrownGeometry.translate(0, 0.57, 0);
-  const upperCrownGeometry = new THREE.DodecahedronGeometry(0.235, 0);
-  upperCrownGeometry.translate(0, 0.82, 0);
+  const trunkGeometry = new THREE.CylinderGeometry(0.014, 0.022, 0.085, 5);
+  trunkGeometry.translate(0, 0.0425, 0);
+  const crownGeometry = new THREE.DodecahedronGeometry(0.09, 0);
+  crownGeometry.scale(1.05, 1.18, 1.05);
+  crownGeometry.translate(0, 0.13, 0);
 
   const trunks = new THREE.InstancedMesh(
     trunkGeometry,
-    new THREE.MeshStandardMaterial({ color: 0x514735, roughness: 1 }),
+    new THREE.MeshStandardMaterial({ color: 0x4b4437, roughness: 1 }),
     points.length,
   );
-  const lowerCrowns = new THREE.InstancedMesh(
-    lowerCrownGeometry,
-    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, vertexColors: false }),
-    points.length,
-  );
-  const upperCrowns = new THREE.InstancedMesh(
-    upperCrownGeometry,
+  const crowns = new THREE.InstancedMesh(
+    crownGeometry,
     new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, vertexColors: false }),
     points.length,
   );
@@ -77,8 +71,8 @@ function addForestInstances(scene: THREE.Scene): void {
   const position = new THREE.Vector3();
   const scale = new THREE.Vector3();
   const yAxis = new THREE.Vector3(0, 1, 0);
-  const darkGreen = new THREE.Color(0x244b36);
-  const lightGreen = new THREE.Color(0x3f6d48);
+  const darkGreen = new THREE.Color(0x294631);
+  const lightGreen = new THREE.Color(0x426044);
 
   points.forEach((point, index) => {
     quaternion.setFromAxisAngle(yAxis, point.rotation);
@@ -88,56 +82,48 @@ function addForestInstances(scene: THREE.Scene): void {
     matrix.compose(position, quaternion, scale);
     trunks.setMatrixAt(index, matrix);
 
-    const crownWide = 0.9 + deterministic01(point.x, point.z, 29) * 0.3;
-    scale.set(point.scale * crownWide, point.scale * (1.02 + crownWide * 0.12), point.scale);
+    const crownWide = 0.88 + deterministic01(point.x, point.z, 29) * 0.22;
+    scale.set(point.scale * crownWide, point.scale * (0.92 + crownWide * 0.1), point.scale * crownWide);
     matrix.compose(position, quaternion, scale);
-    lowerCrowns.setMatrixAt(index, matrix);
+    crowns.setMatrixAt(index, matrix);
 
-    scale.set(point.scale * 0.82, point.scale * 0.9, point.scale * 0.82);
-    matrix.compose(position, quaternion, scale);
-    upperCrowns.setMatrixAt(index, matrix);
-
-    const colorMix = 0.18 + deterministic01(point.x, point.z, 31) * 0.58;
-    const crownColor = darkGreen.clone().lerp(lightGreen, colorMix);
-    lowerCrowns.setColorAt(index, crownColor);
-    upperCrowns.setColorAt(index, crownColor.clone().offsetHSL(0, -0.02, 0.035));
+    const colorMix = 0.16 + deterministic01(point.x, point.z, 31) * 0.52;
+    crowns.setColorAt(index, darkGreen.clone().lerp(lightGreen, colorMix));
   });
 
   trunks.instanceMatrix.needsUpdate = true;
-  lowerCrowns.instanceMatrix.needsUpdate = true;
-  upperCrowns.instanceMatrix.needsUpdate = true;
-  if (lowerCrowns.instanceColor) lowerCrowns.instanceColor.needsUpdate = true;
-  if (upperCrowns.instanceColor) upperCrowns.instanceColor.needsUpdate = true;
-  scene.add(trunks, lowerCrowns, upperCrowns);
+  crowns.instanceMatrix.needsUpdate = true;
+  if (crowns.instanceColor) crowns.instanceColor.needsUpdate = true;
+  scene.add(trunks, crowns);
 }
 
 function addRockInstances(scene: THREE.Scene): void {
   const points: InstancePoint[] = [];
-  const spacing = 0.88;
+  const spacing = 2.15;
 
-  for (let x = -WORLD_HALF_WIDTH + 3; x <= WORLD_HALF_WIDTH - 3; x += spacing) {
-    for (let z = -WORLD_HALF_DEPTH + 3; z <= WORLD_HALF_DEPTH - 3; z += spacing) {
+  for (let x = -WORLD_HALF_WIDTH + 5; x <= WORLD_HALF_WIDTH - 5; x += spacing) {
+    for (let z = -WORLD_HALF_DEPTH + 5; z <= WORLD_HALF_DEPTH - 5; z += spacing) {
       if (!isLandAt(x, z)) continue;
 
       const strength = mountainStrengthAt(x, z);
       const height = terrainHeight(x, z);
       const roll = deterministic01(x, z, 41);
-      if (height < 1.32 || strength < 0.4 || roll > strength * 0.64) continue;
+      if (height < 1.55 || strength < 0.46 || roll > strength * 0.34) continue;
 
       points.push({
-        x: x + (deterministic01(x, z, 43) - 0.5) * 0.44,
+        x: x + (deterministic01(x, z, 43) - 0.5) * 0.9,
         y: height,
-        z: z + (deterministic01(x, z, 47) - 0.5) * 0.44,
-        scale: 0.34 + deterministic01(x, z, 53) * 0.68,
+        z: z + (deterministic01(x, z, 47) - 0.5) * 0.9,
+        scale: 0.52 + deterministic01(x, z, 53) * 0.52,
         rotation: deterministic01(x, z, 59) * Math.PI * 2,
       });
     }
   }
 
-  const geometry = new THREE.DodecahedronGeometry(0.2, 0);
+  const geometry = new THREE.DodecahedronGeometry(0.075, 0);
   const rocks = new THREE.InstancedMesh(
     geometry,
-    new THREE.MeshStandardMaterial({ color: 0x676b66, roughness: 1 }),
+    new THREE.MeshStandardMaterial({ color: 0x676963, roughness: 1 }),
     points.length,
   );
   const matrix = new THREE.Matrix4();
@@ -147,8 +133,8 @@ function addRockInstances(scene: THREE.Scene): void {
 
   points.forEach((point, index) => {
     quaternion.setFromEuler(new THREE.Euler(0.2, point.rotation, 0.14));
-    scale.set(point.scale * 1.35, point.scale * 0.72, point.scale);
-    position.set(point.x, point.y + 0.07, point.z);
+    scale.set(point.scale * 1.35, point.scale * 0.66, point.scale);
+    position.set(point.x, point.y + 0.026, point.z);
     matrix.compose(position, quaternion, scale);
     rocks.setMatrixAt(index, matrix);
   });

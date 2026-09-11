@@ -6,7 +6,6 @@ import {
   TERRAIN_SEGMENTS_Z,
   WORLD_DEPTH,
   WORLD_WIDTH,
-  deterministic01,
   islandSignal,
   terrainSampleAt,
   type TerrainSample,
@@ -24,14 +23,14 @@ const COLORS = {
   shallowWater: new THREE.Color(0x6d918a),
   wetSand: new THREE.Color(0x8f876b),
   dryCoast: new THREE.Color(0xa18f68),
-  neutralGrass: new THREE.Color(0x687957),
-  dryGrass: new THREE.Color(0x817654),
-  fertileGrass: new THREE.Color(0x537848),
-  wetland: new THREE.Color(0x506d53),
-  highland: new THREE.Color(0x60675b),
-  roughGround: new THREE.Color(0x68665f),
-  rock: new THREE.Color(0x74706a),
-  exposedRock: new THREE.Color(0x85817b),
+  neutralGrass: new THREE.Color(0x697651),
+  dryGrass: new THREE.Color(0x857650),
+  fertileGrass: new THREE.Color(0x4f7447),
+  wetland: new THREE.Color(0x4b6851),
+  highland: new THREE.Color(0x626457),
+  roughGround: new THREE.Color(0x6b655a),
+  rock: new THREE.Color(0x77716a),
+  exposedRock: new THREE.Color(0x8b847a),
 };
 
 export function addTerrain(scene: THREE.Scene): void {
@@ -58,9 +57,6 @@ function createOcean(): THREE.Mesh {
 
     const color = COLORS.deepWater.clone().lerp(COLORS.offshoreWater, nearShelf * 0.76);
     color.lerp(COLORS.shallowWater, shallow * 0.82);
-
-    const variation = (deterministic01(x * 0.12, z * 0.12, 73) - 0.5) * 0.014;
-    color.offsetHSL(0, variation * 0.07, variation);
 
     colors[i * 3] = color.r;
     colors[i * 3 + 1] = color.g;
@@ -101,7 +97,7 @@ function createLand(): THREE.Mesh {
     const sample = terrainSampleAt(x, z);
     positions.setZ(i, sample.height);
 
-    const color = terrainColor(x, z, sample);
+    const color = terrainColor(sample);
     colors[i * 3] = color.r;
     colors[i * 3 + 1] = color.g;
     colors[i * 3 + 2] = color.b;
@@ -116,35 +112,33 @@ function createLand(): THREE.Mesh {
     geometry,
     new THREE.MeshStandardMaterial({
       vertexColors: true,
-      roughness: 0.9,
+      roughness: 0.92,
       metalness: 0,
       dithering: true,
     }),
   );
 }
 
-function terrainColor(x: number, z: number, sample: TerrainSample): THREE.Color {
+function terrainColor(sample: TerrainSample): THREE.Color {
   if (sample.height <= SEA_LEVEL || sample.biome === 'sea') {
-    const signal = islandSignal(x, z);
-    const shelf = THREE.MathUtils.smoothstep(signal, -0.34, 0.004);
-    return COLORS.deepWater.clone().lerp(COLORS.shallowWater, shelf * 0.76);
+    return COLORS.deepWater.clone().lerp(COLORS.shallowWater, sample.coastInfluence * 0.72);
   }
 
-  const lowland = 1 - THREE.MathUtils.smoothstep(sample.height, 0.75, 2.55);
-  const highland = THREE.MathUtils.smoothstep(sample.height, 1.15, 3.9);
+  const lowland = 1 - THREE.MathUtils.smoothstep(sample.height, 0.78, 2.7);
+  const highland = THREE.MathUtils.smoothstep(sample.height, 1.15, 3.95);
   const summit = THREE.MathUtils.smoothstep(sample.height, 3.35, 6.1);
   const exposedRock = THREE.MathUtils.smoothstep(sample.roughness, 0.48, 0.88) * highland;
   const dry = (1 - sample.moisture) * lowland;
   const wet = sample.moisture * lowland;
 
   const color = COLORS.neutralGrass.clone();
-  color.lerp(COLORS.dryGrass, dry * 0.72);
-  color.lerp(COLORS.fertileGrass, sample.fertility * 0.8);
-  color.lerp(COLORS.wetland, wet * sample.fertility * 0.21);
-  color.lerp(COLORS.highland, highland * 0.72);
-  color.lerp(COLORS.roughGround, sample.roughness * 0.27);
-  color.lerp(COLORS.rock, exposedRock * 0.82);
-  color.lerp(COLORS.exposedRock, summit * 0.64);
+  color.lerp(COLORS.dryGrass, dry * 0.82);
+  color.lerp(COLORS.fertileGrass, sample.fertility * (0.7 + lowland * 0.2));
+  color.lerp(COLORS.wetland, wet * sample.fertility * 0.3);
+  color.lerp(COLORS.highland, highland * 0.74);
+  color.lerp(COLORS.roughGround, sample.roughness * 0.28);
+  color.lerp(COLORS.rock, exposedRock * 0.84);
+  color.lerp(COLORS.exposedRock, summit * 0.66);
 
   const coastHeightMask = 1 - THREE.MathUtils.smoothstep(sample.height, 0.03, 0.48);
   const coastWeight = sample.coastInfluence * coastHeightMask;
@@ -153,8 +147,5 @@ function terrainColor(x: number, z: number, sample: TerrainSample): THREE.Color 
     color.lerp(coastColor, coastWeight * 0.84);
   }
 
-  const broadVariation = (deterministic01(x * 0.18, z * 0.18, 79) - 0.5) * 0.026;
-  const fineVariation = (deterministic01(x * 0.76, z * 0.76, 83) - 0.5) * 0.011;
-  color.offsetHSL(0, broadVariation * 0.08, broadVariation + fineVariation);
   return color;
 }
