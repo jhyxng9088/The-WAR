@@ -35,13 +35,13 @@ export class RenderPerformance {
   get estimatedRefreshHz(): number {
     if (this.intervals.length < 20) return 60;
     const sorted = [...this.intervals].sort((a, b) => a - b);
-    const fastInterval = sorted[Math.floor(sorted.length * 0.2)];
+    const fastInterval = percentile(sorted, 0.2, 16.67);
     return Math.round(Math.min(120, Math.max(60, 1000 / fastInterval)));
   }
 
   private adjustPixelRatio(): void {
     const sorted = [...this.intervals].sort((a, b) => a - b);
-    const typical = sorted[Math.floor(sorted.length * 0.65)];
+    const typical = percentile(sorted, 0.65, 16.67);
     const refreshHz = this.estimatedRefreshHz >= 90 ? 120 : 60;
     const budget = 1000 / refreshHz;
 
@@ -58,4 +58,10 @@ export class RenderPerformance {
     this.pixelRatio = next;
     this.renderer.setPixelRatio(this.pixelRatio);
   }
+}
+
+function percentile(sorted: readonly number[], fraction: number, fallback: number): number {
+  if (sorted.length === 0) return fallback;
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.floor(sorted.length * fraction)));
+  return sorted[index] ?? fallback;
 }
