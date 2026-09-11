@@ -3,22 +3,22 @@ import { createRibbonGeometry, type RibbonSample } from '../../rendering/geometr
 import { RIVERS, terrainHeight, type RiverDefinition } from '../WorldField';
 
 const RIVER_SEGMENTS = 240;
-const WIDTH_SCALE = 1.24;
+const WIDTH_SCALE = 0.88;
 const FLOODPLAIN_MATERIAL = new THREE.MeshBasicMaterial({
-  color: 0x486345,
+  color: 0x496b4d,
   transparent: true,
-  opacity: 0.12,
+  opacity: 0.1,
   depthWrite: false,
 });
 const BANK_MATERIAL = new THREE.MeshBasicMaterial({
-  color: 0x294449,
+  color: 0x42635d,
   transparent: true,
-  opacity: 0.5,
+  opacity: 0.22,
   depthWrite: false,
 });
 const WATER_MATERIAL = new THREE.MeshStandardMaterial({
-  color: 0x3b7480,
-  roughness: 0.5,
+  color: 0x4f8792,
+  roughness: 0.56,
   metalness: 0,
 });
 
@@ -42,21 +42,21 @@ function addRiverPath(scene: THREE.Scene, river: RiverDefinition, riverIndex: nu
     const t = i / RIVER_SEGMENTS;
     const point = path.getPoint(t);
     const flow = Math.pow(t, 0.68);
-    const meanderPulse = 1 + Math.sin(t * 9.2 + riverIndex * 1.61) * 0.024;
+    const meanderPulse = 1 + Math.sin(t * 9.2 + riverIndex * 1.61) * 0.018;
     const width = THREE.MathUtils.lerp(river.sourceWidth, river.mouthWidth, flow) * meanderPulse * WIDTH_SCALE;
     const y = terrainHeight(point.x, point.z);
-    const plainWidth = width * THREE.MathUtils.lerp(3.6, 5.2, flow) + THREE.MathUtils.lerp(0.65, 1.9, flow);
+    const plainWidth = width * THREE.MathUtils.lerp(4.0, 5.8, flow) + THREE.MathUtils.lerp(0.6, 1.7, flow);
 
     floodplain.push({
       position: new THREE.Vector3(point.x, y + 0.012, point.z),
       width: plainWidth,
     });
     bank.push({
-      position: new THREE.Vector3(point.x, y + 0.025, point.z),
-      width: width * 1.34,
+      position: new THREE.Vector3(point.x, y + 0.023, point.z),
+      width: width * 1.18,
     });
     water.push({
-      position: new THREE.Vector3(point.x, y + 0.036, point.z),
+      position: new THREE.Vector3(point.x, y + 0.034, point.z),
       width,
     });
   }
