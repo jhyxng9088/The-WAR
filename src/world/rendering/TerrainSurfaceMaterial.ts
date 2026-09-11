@@ -81,7 +81,7 @@ const LAND_FRAGMENT_SHADER = /* glsl */ `
     float value = 0.0;
     float amplitude = 0.5;
     mat2 rot = mat2(0.82, -0.57, 0.57, 0.82);
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 3; i++) {
       value += noise2(p) * amplitude;
       p = rot * p * 2.03 + 7.17;
       amplitude *= 0.5;
@@ -162,9 +162,9 @@ const LAND_FRAGMENT_SHADER = /* glsl */ `
     color = mix(color, snow, clamp(snowMask, 0.0, 0.88));
 
     float normalDetailStrength = rockMask * 0.54 + vMountain * 0.12;
-    float detailCenter = fbm(p * 0.23);
-    float detailX = fbm((p + vec2(0.42, 0.0)) * 0.23);
-    float detailZ = fbm((p + vec2(0.0, 0.42)) * 0.23);
+    float detailCenter = noise2(p * 0.31);
+    float detailX = noise2((p + vec2(0.36, 0.0)) * 0.31);
+    float detailZ = noise2((p + vec2(0.0, 0.36)) * 0.31);
     vec3 detailNormal = normalize(vec3((detailCenter - detailX) * 1.8, 1.0, (detailCenter - detailZ) * 1.8));
     vec3 normal = normalize(mix(baseNormal, detailNormal, clamp(normalDetailStrength, 0.0, 0.62)));
 
