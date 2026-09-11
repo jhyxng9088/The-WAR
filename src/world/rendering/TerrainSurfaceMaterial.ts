@@ -56,9 +56,6 @@ const LAND_FRAGMENT_SHADER = /* glsl */ `
   varying float vRiver;
 
   #include <fog_pars_fragment>
-  #include <tonemapping_pars_fragment>
-  #include <colorspace_pars_fragment>
-  #include <dithering_pars_fragment>
 
   float hash21(vec2 p) {
     p = fract(p * vec2(123.34, 456.21));
@@ -183,7 +180,6 @@ const LAND_FRAGMENT_SHADER = /* glsl */ `
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
     #include <fog_fragment>
-    #include <dithering_fragment>
   }
 `;
 
@@ -214,9 +210,6 @@ const OCEAN_FRAGMENT_SHADER = /* glsl */ `
   varying float vShoal;
 
   #include <fog_pars_fragment>
-  #include <tonemapping_pars_fragment>
-  #include <colorspace_pars_fragment>
-  #include <dithering_pars_fragment>
 
   float hash21(vec2 p) {
     p = fract(p * vec2(123.34, 456.21));
@@ -249,27 +242,29 @@ const OCEAN_FRAGMENT_SHADER = /* glsl */ `
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
     #include <fog_fragment>
-    #include <dithering_fragment>
   }
 `;
 
+function fogUniforms(extra: Record<string, THREE.IUniform>): Record<string, THREE.IUniform> {
+  return THREE.UniformsUtils.merge([THREE.UniformsLib.fog, extra]);
+}
+
 export function createLandSurfaceMaterial(): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
-    uniforms: {
+    uniforms: fogUniforms({
       uSunDirection: { value: SUN_DIRECTION.clone() },
-    },
+    }),
     vertexShader: LAND_VERTEX_SHADER,
     fragmentShader: LAND_FRAGMENT_SHADER,
     fog: true,
-    dithering: true,
   });
 }
 
 export function createOceanSurfaceMaterial(): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
+    uniforms: fogUniforms({}),
     vertexShader: OCEAN_VERTEX_SHADER,
     fragmentShader: OCEAN_FRAGMENT_SHADER,
     fog: true,
-    dithering: true,
   });
 }
