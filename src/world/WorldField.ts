@@ -105,8 +105,12 @@ function distanceToPolyline(x: number, z: number, points: readonly XZ[]): number
   let best = Number.POSITIVE_INFINITY;
 
   for (let i = 0; i < points.length - 1; i += 1) {
-    const [ax, az] = points[i];
-    const [bx, bz] = points[i + 1];
+    const start = points[i];
+    const end = points[i + 1];
+    if (!start || !end) continue;
+
+    const [ax, az] = start;
+    const [bx, bz] = end;
     const abx = bx - ax;
     const abz = bz - az;
     const lengthSq = abx * abx + abz * abz;
