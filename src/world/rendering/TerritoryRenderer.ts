@@ -4,11 +4,12 @@ import { isLandAt, terrainHeight, type XZ } from '../WorldField';
 import type { StrategicTerritory } from '../StrategicWorld';
 
 const TINT_GRID = 3.4;
+const BORDER_SAMPLE_SPACING = 1.6;
 
 export function addTerritory(scene: THREE.Scene, territory: StrategicTerritory): void {
   if (territory.polygon.length < 3) return;
   addTerrainTint(scene, territory);
-  addBorder(scene, territory.color, sampleSmoothBorder(territory.polygon));
+  addBorder(scene, territory.color, sampleBorder(territory.polygon));
 }
 
 function addTerrainTint(scene: THREE.Scene, territory: StrategicTerritory): void {
@@ -71,19 +72,26 @@ function createTerrainConformingFill(polygon: readonly XZ[]): THREE.BufferGeomet
   return geometry;
 }
 
-function sampleSmoothBorder(polygon: readonly XZ[]): XZ[] {
-  const curve = new THREE.CatmullRomCurve3(
-    polygon.map(([x, z]) => new THREE.Vector3(x, 0, z)),
-    true,
-    'centripetal',
-    0.32,
-  );
-  const count = Math.max(96, polygon.length * 18);
+function sampleBorder(polygon: readonly XZ[]): XZ[] {
   const samples: XZ[] = [];
-  for (let i = 0; i < count; i += 1) {
-    const point = curve.getPoint(i / count);
-    samples.push([point.x, point.z]);
+
+  for (let i = 0; i < polygon.length; i += 1) {
+    const start = polygon[i];
+    const end = polygon[(i + 1) % polygon.length];
+    if (!start || !end) continue;
+
+    const [ax, az] = start;
+    const [bx, bz] = end;
+    const segmentCount = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / BORDER_SAMPLE_SPACING));
+    for (let step = 0; step < segmentCount; step += 1) {
+      const t = step / segmentCount;
+      samples.push([
+        THREE.MathUtils.lerp(ax, bx, t),
+        THREE.MathUtils.lerp(az, bz, t),
+      ]);
+    }
   }
+
   return samples;
 }
 
