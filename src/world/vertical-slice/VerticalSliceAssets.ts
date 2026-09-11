@@ -104,7 +104,10 @@ function createMaskTexture(rgba: Uint8Array): THREE.DataTexture {
 
 function heightSample(x: number, y: number): number {
   const value = heightBytes[y * SLICE_GRID_WIDTH + x] ?? 0;
-  return (value / 255) * data.maxHeight;
+  const normalized = value / 255;
+  const authoredBase = normalized * data.maxHeight;
+  const mountainBand = THREE.MathUtils.clamp((normalized - 0.32) / 0.68, 0, 1);
+  return authoredBase + Math.pow(mountainBand, 1.35) * 6.2;
 }
 
 function decodeTreePoints(value: string): TreePlacement[] {
