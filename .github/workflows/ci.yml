@@ -23,3 +23,11 @@ jobs:
 
       - name: Typecheck and build
         run: npm run build
+
+      - name: Upload visual preview artifact
+        if: github.event_name == 'push' && startsWith(github.ref_name, 'feat/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-preview
+          path: dist
+          retention-days: 1

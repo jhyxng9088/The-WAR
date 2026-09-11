@@ -22,16 +22,16 @@ export class Game {
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.96;
+    this.renderer.toneMappingExposure = 1.02;
 
-    this.scene.background = new THREE.Color(0x657477);
-    this.scene.fog = new THREE.Fog(0x657477, 205, 540);
+    this.scene.background = new THREE.Color(0x3f5257);
+    this.scene.fog = new THREE.Fog(0x3f5257, 138, 260);
 
     this.camera = new WorldCamera();
     this.input = new WorldInput(canvas, this.camera);
     this.performance = new RenderPerformance(this.renderer);
 
-    createPrototypeWorld(this.scene);
+    void createPrototypeWorld(this.scene);
     this.resize();
 
     window.addEventListener('resize', this.queueResize, { passive: true });
@@ -42,13 +42,11 @@ export class Game {
 
   start(): void {
     if (this.frameId !== null) return;
-
     const render = (timestamp: number): void => {
       this.performance.sample(timestamp);
       this.renderer.render(this.scene, this.camera.camera);
       this.frameId = requestAnimationFrame(render);
     };
-
     this.frameId = requestAnimationFrame(render);
   }
 
@@ -79,7 +77,6 @@ export class Game {
     const height = Math.max(1, Math.round(viewport?.height ?? window.innerHeight ?? this.canvas.clientHeight));
     const offsetLeft = Math.round(viewport?.offsetLeft ?? 0);
     const offsetTop = Math.round(viewport?.offsetTop ?? 0);
-
     const host = this.canvas.parentElement;
     if (host) {
       host.style.inset = 'auto';
@@ -88,7 +85,6 @@ export class Game {
       host.style.width = `${width}px`;
       host.style.height = `${height}px`;
     }
-
     this.canvas.style.width = `${width}px`;
     this.canvas.style.height = `${height}px`;
     this.renderer.setSize(width, height, false);
