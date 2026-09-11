@@ -16,11 +16,11 @@ const TERRAIN_SEGMENTS_Z = 88;
 
 export function addVerticalSliceTerrain(scene: THREE.Scene): void {
   scene.add(createTerrainMesh());
-  scene.add(createRibbon(SLICE_RIVER, 1.18, 2.7, 0x3d6971, 0.96, 0.09));
-  scene.add(createRibbon(SLICE_BORDER, 0.28, 0.28, 0xd8c47f, 0.88, 0.14));
+  scene.add(createRibbon(SLICE_RIVER, 1.05, 2.35, 0x416d75, 0.93, 0.085));
+  scene.add(createRibbon(SLICE_BORDER, 0.24, 0.24, 0xd8c47f, 0.82, 0.13));
   scene.add(createRibbon([
     [-34, -4], [-17, -7], [1, -10], SLICE_CITY, [34, -19], [50, -25],
-  ], 0.42, 0.52, 0xbda977, 0.82, 0.11));
+  ], 0.36, 0.46, 0xbda977, 0.77, 0.1));
 }
 
 function createTerrainMesh(): THREE.Mesh {
@@ -80,11 +80,34 @@ function createTerrainMesh(): THREE.Mesh {
       varying vec3 vNormalWorld;
       varying vec3 vWorld;
 
+      vec3 sampleLayer(sampler2D tex, vec2 worldXZ, float scale, vec2 offset) {
+        vec3 fine = texture2D(tex, worldXZ * scale + offset).rgb;
+        vec3 broad = texture2D(tex, worldXZ * (scale * 0.39) + offset.yx * 0.61).rgb;
+        return mix(fine, broad, 0.26);
+      }
+
+      vec3 sampleRockTriplanar(vec3 worldPos, vec3 normal) {
+        vec3 weights = pow(abs(normal), vec3(5.0));
+        weights /= max(weights.x + weights.y + weights.z, 0.001);
+        float scale = 0.118;
+        vec3 xProjection = texture2D(uRock, worldPos.zy * scale).rgb;
+        vec3 yProjection = texture2D(uRock, worldPos.xz * scale).rgb;
+        vec3 zProjection = texture2D(uRock, worldPos.xy * scale).rgb;
+        return xProjection * weights.x + yProjection * weights.y + zProjection * weights.z;
+      }
+
       void main() {
+        vec3 normal = normalize(vNormalWorld);
         vec3 mask = texture2D(uSplat, vUv).rgb;
-        float rockWeight = mask.r;
-        float soilWeight = mask.g;
-        float sandWeight = mask.b;
+        float forestMass = texture2D(uForest, vUv).r;
+        float slope = clamp(1.0 - normal.y, 0.0, 1.0);
+
+        float authoredRock = mask.r * smoothstep(0.09, 0.31, slope);
+        float slopeRock = smoothstep(0.23, 0.56, slope) * smoothstep(2.4, 6.0, vWorld.y);
+        float highRock = smoothstep(7.0, 10.2, vWorld.y) * 0.58;
+        float rockWeight = clamp(max(authoredRock, max(slopeRock, highRock)), 0.0, 1.0);
+        float soilWeight = mask.g * (1.0 - rockWeight * 0.7);
+        float sandWeight = mask.b * (1.0 - rockWeight);
         float grassWeight = max(0.0, 1.0 - rockWeight - soilWeight - sandWeight);
         float total = max(0.001, grassWeight + rockWeight + soilWeight + sandWeight);
         grassWeight /= total;
@@ -92,27 +115,31 @@ function createTerrainMesh(): THREE.Mesh {
         soilWeight /= total;
         sandWeight /= total;
 
-        vec3 grass = texture2D(uGrass, vUv * vec2(18.0, 13.0)).rgb;
-        vec3 rock = texture2D(uRock, vUv * vec2(22.0, 16.0)).rgb;
-        vec3 soil = texture2D(uSoil, vUv * vec2(17.0, 12.0)).rgb;
-        vec3 sand = texture2D(uSand, vUv * vec2(20.0, 15.0)).rgb;
+        vec2 worldXZ = vWorld.xz;
+        vec3 grass = sampleLayer(uGrass, worldXZ, 0.105, vec2(0.17, 0.41));
+        vec3 rock = sampleRockTriplanar(vWorld, normal);
+        vec3 soil = sampleLayer(uSoil, worldXZ, 0.12, vec2(0.53, 0.11));
+        vec3 sand = sampleLayer(uSand, worldXZ, 0.14, vec2(0.31, 0.72));
         vec3 base = grass * grassWeight + rock * rockWeight + soil * soilWeight + sand * sandWeight;
 
-        float forestMass = texture2D(uForest, vUv).r;
-        vec3 forestFloor = vec3(0.12, 0.22, 0.105);
-        base = mix(base, mix(base * 0.56, forestFloor, 0.44), forestMass * 0.72);
+        vec3 forestFloor = vec3(0.105, 0.205, 0.095);
+        float forestBlend = forestMass * (1.0 - rockWeight) * 0.7;
+        base = mix(base, mix(base * 0.58, forestFloor, 0.42), forestBlend);
 
-        float territorySide = smoothstep(-2.0, 2.0, vWorld.z - (vWorld.x * 0.14 - 6.0));
+        float territorySide = smoothstep(-2.2, 2.2, vWorld.z - (vWorld.x * 0.14 - 6.0));
         vec3 westTint = vec3(0.28, 0.39, 0.29);
         vec3 eastTint = vec3(0.46, 0.34, 0.27);
-        base = mix(base, mix(eastTint, westTint, territorySide), 0.09);
+        base = mix(base, mix(eastTint, westTint, territorySide), 0.07);
 
-        vec3 normal = normalize(vNormalWorld);
-        vec3 lightDir = normalize(vec3(-0.52, 0.78, 0.34));
+        float summit = smoothstep(10.0, 12.8, vWorld.y) * smoothstep(0.18, 0.58, slope);
+        base = mix(base, vec3(0.70, 0.69, 0.65), summit * 0.13);
+
+        vec3 lightDir = normalize(vec3(-0.52, 0.80, 0.30));
         float diffuse = max(dot(normal, lightDir), 0.0);
-        float slopeShade = clamp(normal.y, 0.0, 1.0);
-        float light = 0.42 + diffuse * 0.72 + slopeShade * 0.08;
-        vec3 color = base * light;
+        float horizon = 0.5 + 0.5 * normal.y;
+        float light = 0.55 + diffuse * 0.49 + horizon * 0.08;
+        float valleyShade = mix(0.94, 1.0, smoothstep(0.6, 4.5, vWorld.y));
+        vec3 color = base * light * valleyShade;
         gl_FragColor = vec4(color, 1.0);
       }
     `,
@@ -167,7 +194,7 @@ function createRibbon(
   geometry.computeVertexNormals();
   const material = new THREE.MeshStandardMaterial({
     color,
-    roughness: 0.72,
+    roughness: 0.84,
     metalness: 0,
     transparent: opacity < 1,
     opacity,
