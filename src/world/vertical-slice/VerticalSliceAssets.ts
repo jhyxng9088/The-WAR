@@ -1,5 +1,9 @@
 import * as THREE from 'three';
 import rawSliceData from '../../assets/vertical-slice/slice-data.json';
+import {
+  AUTHORED_HEIGHT_U8,
+  AUTHORED_MATERIAL_ID_U8,
+} from '../../assets/vertical-slice/AuthoredSliceSurface';
 
 type TreePlacement = readonly [x: number, z: number, variant: number, scale: number, rotation: number];
 type Point2 = readonly [x: number, z: number];
@@ -10,8 +14,6 @@ interface SliceData {
   worldWidth: number;
   worldDepth: number;
   maxHeight: number;
-  heightU8: string;
-  splatRGB: string;
   trees: TreePlacement[];
   river: Point2[];
   city: Point2;
@@ -19,8 +21,15 @@ interface SliceData {
 }
 
 const data = rawSliceData as unknown as SliceData;
-const heightBytes = decodeBase64(data.heightU8);
-const splatBytes = decodeBase64(data.splatRGB);
+const heightBytes = decodeBase64(AUTHORED_HEIGHT_U8);
+const materialIds = decodeBase64(AUTHORED_MATERIAL_ID_U8);
+const expectedSamples = data.width * data.height;
+
+if (heightBytes.length !== expectedSamples || materialIds.length !== expectedSamples) {
+  throw new Error(
+    `Authored slice surface is incomplete: expected ${expectedSamples} samples, got height=${heightBytes.length}, material=${materialIds.length}.`,
+  );
+}
 
 export const SLICE_WIDTH = data.worldWidth;
 export const SLICE_DEPTH = data.worldDepth;
@@ -57,12 +66,16 @@ export function heightAt(x: number, z: number): number {
 
 export function createSplatTexture(): THREE.DataTexture {
   const rgba = new Uint8Array(SLICE_GRID_WIDTH * SLICE_GRID_HEIGHT * 4);
-  for (let i = 0, source = 0; i < rgba.length; i += 4, source += 3) {
-    rgba[i] = splatBytes[source] ?? 0;
-    rgba[i + 1] = splatBytes[source + 1] ?? 0;
-    rgba[i + 2] = splatBytes[source + 2] ?? 0;
-    rgba[i + 3] = 255;
+
+  for (let sample = 0, target = 0; sample < materialIds.length; sample += 1, target += 4) {
+    const materialId = materialIds[sample] ?? 0;
+    // 0 grass, 1 rock, 2 soil, 3 sand. Grass is inferred in the terrain shader.
+    rgba[target] = materialId === 1 ? 255 : 0;
+    rgba[target + 1] = materialId === 2 ? 255 : 0;
+    rgba[target + 2] = materialId === 3 ? 255 : 0;
+    rgba[target + 3] = 255;
   }
+
   const texture = new THREE.DataTexture(rgba, SLICE_GRID_WIDTH, SLICE_GRID_HEIGHT, THREE.RGBAFormat);
   texture.colorSpace = THREE.NoColorSpace;
   texture.minFilter = THREE.LinearFilter;
