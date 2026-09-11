@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import rawSliceData from '../../assets/vertical-slice/slice-data.json';
+import { AUTHORED_TREE_POINTS_U8 } from '../../assets/vertical-slice/AuthoredSlicePopulation';
 import {
+  AUTHORED_FOREST_RLE,
   AUTHORED_HEIGHT_U8,
   AUTHORED_MATERIAL_RLE,
 } from '../../assets/vertical-slice/AuthoredSliceSurface';
@@ -14,7 +16,6 @@ interface SliceData {
   worldWidth: number;
   worldDepth: number;
   maxHeight: number;
-  trees: TreePlacement[];
   river: Point2[];
   city: Point2;
   border: Point2[];
@@ -23,7 +24,8 @@ interface SliceData {
 const data = rawSliceData as unknown as SliceData;
 const expectedSamples = data.width * data.height;
 const heightBytes = decodeBase64(AUTHORED_HEIGHT_U8);
-const materialIds = decodeMaterialRle(AUTHORED_MATERIAL_RLE, expectedSamples);
+const materialIds = decodeRle(AUTHORED_MATERIAL_RLE, expectedSamples, 3, 'material');
+const forestMask = decodeRle(AUTHORED_FOREST_RLE, expectedSamples, 1, 'forest');
 
 if (heightBytes.length !== expectedSamples) {
   throw new Error(
@@ -37,7 +39,7 @@ export const SLICE_HALF_WIDTH = SLICE_WIDTH / 2;
 export const SLICE_HALF_DEPTH = SLICE_DEPTH / 2;
 export const SLICE_GRID_WIDTH = data.width;
 export const SLICE_GRID_HEIGHT = data.height;
-export const SLICE_TREES = data.trees;
+export const SLICE_TREES = decodeTreePoints(AUTHORED_TREE_POINTS_U8);
 export const SLICE_RIVER = data.river;
 export const SLICE_CITY = data.city;
 export const SLICE_BORDER = data.border;
@@ -69,13 +71,28 @@ export function createSplatTexture(): THREE.DataTexture {
 
   for (let sample = 0, target = 0; sample < materialIds.length; sample += 1, target += 4) {
     const materialId = materialIds[sample] ?? 0;
-    // 0 grass, 1 rock, 2 soil, 3 sand. Grass is inferred in the terrain shader.
     rgba[target] = materialId === 1 ? 255 : 0;
     rgba[target + 1] = materialId === 2 ? 255 : 0;
     rgba[target + 2] = materialId === 3 ? 255 : 0;
     rgba[target + 3] = 255;
   }
 
+  return createMaskTexture(rgba);
+}
+
+export function createForestTexture(): THREE.DataTexture {
+  const rgba = new Uint8Array(SLICE_GRID_WIDTH * SLICE_GRID_HEIGHT * 4);
+  for (let sample = 0, target = 0; sample < forestMask.length; sample += 1, target += 4) {
+    const value = (forestMask[sample] ?? 0) * 255;
+    rgba[target] = value;
+    rgba[target + 1] = value;
+    rgba[target + 2] = value;
+    rgba[target + 3] = 255;
+  }
+  return createMaskTexture(rgba);
+}
+
+function createMaskTexture(rgba: Uint8Array): THREE.DataTexture {
   const texture = new THREE.DataTexture(rgba, SLICE_GRID_WIDTH, SLICE_GRID_HEIGHT, THREE.RGBAFormat);
   texture.colorSpace = THREE.NoColorSpace;
   texture.minFilter = THREE.LinearFilter;
@@ -90,6 +107,22 @@ function heightSample(x: number, y: number): number {
   return (value / 255) * data.maxHeight;
 }
 
+function decodeTreePoints(value: string): TreePlacement[] {
+  const bytes = decodeBase64(value);
+  if (bytes.length % 5 !== 0) throw new Error('Authored tree point cloud is incomplete.');
+
+  const placements: TreePlacement[] = [];
+  for (let offset = 0; offset < bytes.length; offset += 5) {
+    const x = ((bytes[offset] ?? 0) / 255) * SLICE_WIDTH - SLICE_HALF_WIDTH;
+    const z = ((bytes[offset + 1] ?? 0) / 255) * SLICE_DEPTH - SLICE_HALF_DEPTH;
+    const variant = bytes[offset + 2] ?? 0;
+    const scale = 0.72 + ((bytes[offset + 3] ?? 0) / 255) * 0.62;
+    const rotation = ((bytes[offset + 4] ?? 0) / 255) * Math.PI * 2;
+    placements.push([x, z, variant, scale, rotation]);
+  }
+  return placements;
+}
+
 function decodeBase64(value: string): Uint8Array {
   const binary = atob(value);
   const bytes = new Uint8Array(binary.length);
@@ -97,26 +130,31 @@ function decodeBase64(value: string): Uint8Array {
   return bytes;
 }
 
-function decodeMaterialRle(value: string, expectedSamples: number): Uint8Array {
+function decodeRle(
+  value: string,
+  expectedSamples: number,
+  maxValue: number,
+  label: string,
+): Uint8Array {
   const output = new Uint8Array(expectedSamples);
   let offset = 0;
 
   for (const run of value.split(',')) {
-    const [countText, materialText] = run.split(':');
+    const [countText, valueText] = run.split(':');
     const count = Number.parseInt(countText ?? '', 10);
-    const materialId = Number.parseInt(materialText ?? '', 10);
-    if (!Number.isInteger(count) || count <= 0 || !Number.isInteger(materialId) || materialId < 0 || materialId > 3) {
-      throw new Error(`Invalid authored material run: ${run}`);
+    const runValue = Number.parseInt(valueText ?? '', 10);
+    if (!Number.isInteger(count) || count <= 0 || !Number.isInteger(runValue) || runValue < 0 || runValue > maxValue) {
+      throw new Error(`Invalid authored ${label} run: ${run}`);
     }
     if (offset + count > expectedSamples) {
-      throw new Error(`Authored material mask exceeds ${expectedSamples} samples.`);
+      throw new Error(`Authored ${label} mask exceeds ${expectedSamples} samples.`);
     }
-    output.fill(materialId, offset, offset + count);
+    output.fill(runValue, offset, offset + count);
     offset += count;
   }
 
   if (offset !== expectedSamples) {
-    throw new Error(`Authored material mask is incomplete: expected ${expectedSamples} samples, got ${offset}.`);
+    throw new Error(`Authored ${label} mask is incomplete: expected ${expectedSamples} samples, got ${offset}.`);
   }
 
   return output;
