@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import rawSliceData from '../../assets/vertical-slice/slice-data.json';
 import {
   AUTHORED_HEIGHT_U8,
-  AUTHORED_MATERIAL_ID_U8,
+  AUTHORED_MATERIAL_RLE,
 } from '../../assets/vertical-slice/AuthoredSliceSurface';
 
 type TreePlacement = readonly [x: number, z: number, variant: number, scale: number, rotation: number];
@@ -21,13 +21,13 @@ interface SliceData {
 }
 
 const data = rawSliceData as unknown as SliceData;
-const heightBytes = decodeBase64(AUTHORED_HEIGHT_U8);
-const materialIds = decodeBase64(AUTHORED_MATERIAL_ID_U8);
 const expectedSamples = data.width * data.height;
+const heightBytes = decodeBase64(AUTHORED_HEIGHT_U8);
+const materialIds = decodeMaterialRle(AUTHORED_MATERIAL_RLE, expectedSamples);
 
-if (heightBytes.length !== expectedSamples || materialIds.length !== expectedSamples) {
+if (heightBytes.length !== expectedSamples) {
   throw new Error(
-    `Authored slice surface is incomplete: expected ${expectedSamples} samples, got height=${heightBytes.length}, material=${materialIds.length}.`,
+    `Authored slice height is incomplete: expected ${expectedSamples} samples, got ${heightBytes.length}.`,
   );
 }
 
@@ -95,4 +95,29 @@ function decodeBase64(value: string): Uint8Array {
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
   return bytes;
+}
+
+function decodeMaterialRle(value: string, expectedSamples: number): Uint8Array {
+  const output = new Uint8Array(expectedSamples);
+  let offset = 0;
+
+  for (const run of value.split(',')) {
+    const [countText, materialText] = run.split(':');
+    const count = Number.parseInt(countText ?? '', 10);
+    const materialId = Number.parseInt(materialText ?? '', 10);
+    if (!Number.isInteger(count) || count <= 0 || !Number.isInteger(materialId) || materialId < 0 || materialId > 3) {
+      throw new Error(`Invalid authored material run: ${run}`);
+    }
+    if (offset + count > expectedSamples) {
+      throw new Error(`Authored material mask exceeds ${expectedSamples} samples.`);
+    }
+    output.fill(materialId, offset, offset + count);
+    offset += count;
+  }
+
+  if (offset !== expectedSamples) {
+    throw new Error(`Authored material mask is incomplete: expected ${expectedSamples} samples, got ${offset}.`);
+  }
+
+  return output;
 }
