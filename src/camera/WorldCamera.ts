@@ -1,15 +1,15 @@
 import * as THREE from 'three';
 import { SEA_LEVEL, WORLD_HALF_DEPTH, WORLD_HALF_WIDTH } from '../world/WorldField';
 
-const CAMERA_OFFSET = new THREE.Vector3(18, 16.5, 21);
+const CAMERA_OFFSET = new THREE.Vector3(18, 18.8, 22.5);
 const GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-const PAN_MARGIN_X = 7;
-const PAN_MARGIN_Z = 6;
+const PAN_MARGIN_X = 10;
+const PAN_MARGIN_Z = 9;
 const VIEW_HEIGHT = 18;
-const MIN_ZOOM = 0.52;
-const MAX_ZOOM = 3.3;
-const MAX_SUPPORTED_ASPECT = 2.5;
-const SURFACE_GUARD_BAND = 8;
+const MIN_ZOOM = 0.24;
+const MAX_ZOOM = 4.1;
+const MAX_SUPPORTED_ASPECT = 2.75;
+const SURFACE_GUARD_BAND = 18;
 
 export interface SurfaceCoverage {
   width: number;
@@ -17,9 +17,9 @@ export interface SurfaceCoverage {
 }
 
 export class WorldCamera {
-  readonly camera = new THREE.OrthographicCamera(-16, 16, 10, -10, 0.1, 180);
+  readonly camera = new THREE.OrthographicCamera(-16, 16, 10, -10, 0.1, 280);
 
-  private readonly target = new THREE.Vector3(0, 0.7, 1.4);
+  private readonly target = new THREE.Vector3(0, 0.8, 1.4);
   private readonly raycaster = new THREE.Raycaster();
 
   constructor() {
@@ -29,7 +29,7 @@ export class WorldCamera {
   }
 
   static requiredSurfaceCoverage(): SurfaceCoverage {
-    const target = new THREE.Vector3(0, 0.7, 1.4);
+    const target = new THREE.Vector3(0, 0.8, 1.4);
     const halfHeight = VIEW_HEIGHT / 2;
     const halfWidth = halfHeight * MAX_SUPPORTED_ASPECT;
     const probe = new THREE.OrthographicCamera(
@@ -38,7 +38,7 @@ export class WorldCamera {
       halfHeight,
       -halfHeight,
       0.1,
-      180,
+      280,
     );
     probe.position.copy(target).add(CAMERA_OFFSET);
     probe.lookAt(target);
