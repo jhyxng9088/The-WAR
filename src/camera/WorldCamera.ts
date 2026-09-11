@@ -1,15 +1,16 @@
 import * as THREE from 'three';
 import { SEA_LEVEL, WORLD_HALF_DEPTH, WORLD_HALF_WIDTH } from '../world/WorldField';
 
-const CAMERA_DIRECTION = new THREE.Vector3(0.43, 0.78, 0.46).normalize();
+const CAMERA_DIRECTION = new THREE.Vector3(0.33, 0.88, 0.34).normalize();
 const GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-const FOV = 34;
-const DEFAULT_DISTANCE = 190;
-const MIN_DISTANCE = 48;
-const MAX_DISTANCE = 286;
+const FOV = 33;
+const DEFAULT_DISTANCE = 278;
+const MIN_DISTANCE = 50;
+const MAX_DISTANCE = 365;
 const MAX_SUPPORTED_ASPECT = 2.75;
-const SURFACE_GUARD_BAND = 28;
-const WORLD_EDGE_GUARD = 5;
+const SURFACE_GUARD_BAND = 30;
+const MIN_STRATEGIC_PAN = 14;
+const VIEW_KEEP_FRACTION = 0.72;
 
 export interface SurfaceCoverage {
   width: number;
@@ -22,9 +23,9 @@ interface GroundHalfExtents {
 }
 
 export class WorldCamera {
-  readonly camera = new THREE.PerspectiveCamera(FOV, 16 / 9, 0.25, 920);
+  readonly camera = new THREE.PerspectiveCamera(FOV, 16 / 9, 0.25, 1100);
 
-  private readonly target = new THREE.Vector3(0, 0.35, 3);
+  private readonly target = new THREE.Vector3(0, 0.35, 0);
   private readonly raycaster = new THREE.Raycaster();
   private distance = DEFAULT_DISTANCE;
 
@@ -33,8 +34,8 @@ export class WorldCamera {
   }
 
   static requiredSurfaceCoverage(): SurfaceCoverage {
-    const target = new THREE.Vector3(0, SEA_LEVEL, 3);
-    const probe = new THREE.PerspectiveCamera(FOV, MAX_SUPPORTED_ASPECT, 0.25, 920);
+    const target = new THREE.Vector3(0, SEA_LEVEL, 0);
+    const probe = new THREE.PerspectiveCamera(FOV, MAX_SUPPORTED_ASPECT, 0.25, 1100);
     probe.position.copy(target).addScaledVector(CAMERA_DIRECTION, MAX_DISTANCE);
     probe.lookAt(target);
     probe.updateProjectionMatrix();
@@ -95,8 +96,10 @@ export class WorldCamera {
   private clampTargetToVisibleWorld(): void {
     this.syncPosition();
     const extents = this.currentGroundHalfExtents();
-    const maxTargetX = Math.max(0, WORLD_HALF_WIDTH - extents.x - WORLD_EDGE_GUARD);
-    const maxTargetZ = Math.max(0, WORLD_HALF_DEPTH - extents.z - WORLD_EDGE_GUARD);
+    const keptX = Math.min(extents.x * VIEW_KEEP_FRACTION, WORLD_HALF_WIDTH - MIN_STRATEGIC_PAN);
+    const keptZ = Math.min(extents.z * VIEW_KEEP_FRACTION, WORLD_HALF_DEPTH - MIN_STRATEGIC_PAN);
+    const maxTargetX = Math.max(MIN_STRATEGIC_PAN, WORLD_HALF_WIDTH - keptX);
+    const maxTargetZ = Math.max(MIN_STRATEGIC_PAN, WORLD_HALF_DEPTH - keptZ);
 
     const nextX = THREE.MathUtils.clamp(this.target.x, -maxTargetX, maxTargetX);
     const nextZ = THREE.MathUtils.clamp(this.target.z, -maxTargetZ, maxTargetZ);
