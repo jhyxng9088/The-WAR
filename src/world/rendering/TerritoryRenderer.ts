@@ -16,6 +16,7 @@ export function addTerritory(scene: THREE.Scene, territory: TerritoryVisual): vo
   const borderPoints = sampleSmoothBorder(territory.polygon);
   addTint(scene, territory.color, borderPoints);
   addBorder(scene, territory.color, borderPoints);
+  addDistrictDetails(scene, territory.capital, territory.polygon, territory.color);
   addApproachRoads(scene, territory.capital, territory.polygon);
   addCapital(scene, territory.capital, territory.color);
 }
@@ -96,6 +97,113 @@ function addBorder(scene: THREE.Scene, color: number, borderPoints: readonly XZ[
   scene.add(border);
 }
 
+function addDistrictDetails(
+  scene: THREE.Scene,
+  capital: XZ,
+  polygon: readonly XZ[],
+  color: number,
+): void {
+  const targetIndices = [1, 3, 5];
+  targetIndices.forEach((polygonIndex, index) => {
+    const target = polygon[polygonIndex];
+    if (!target) return;
+
+    const t = 0.3 + index * 0.035;
+    const x = THREE.MathUtils.lerp(capital[0], target[0], t);
+    const z = THREE.MathUtils.lerp(capital[1], target[1], t);
+    const rotation = Math.atan2(target[1] - capital[1], target[0] - capital[0]);
+
+    addFieldCluster(scene, x, z, rotation, index);
+    addHamlet(scene, x, z, rotation, color, index);
+  });
+}
+
+function addFieldCluster(
+  scene: THREE.Scene,
+  centerX: number,
+  centerZ: number,
+  rotation: number,
+  index: number,
+): void {
+  const fieldMaterialA = new THREE.MeshBasicMaterial({
+    color: 0x8c8b59,
+    transparent: true,
+    opacity: 0.25,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const fieldMaterialB = new THREE.MeshBasicMaterial({
+    color: 0x718154,
+    transparent: true,
+    opacity: 0.22,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+
+  const offsets: readonly [number, number, number, number][] = [
+    [-1.05, -0.62, 1.45, 0.62],
+    [0.74, -0.5, 1.18, 0.54],
+    [-0.46, 0.72, 1.32, 0.56],
+    [0.96, 0.66, 0.95, 0.48],
+  ];
+
+  offsets.forEach(([dx, dz, width, depth], patchIndex) => {
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    const x = centerX + dx * cos - dz * sin;
+    const z = centerZ + dx * sin + dz * cos;
+    const y = terrainHeight(x, z) + 0.035;
+
+    const geometry = new THREE.PlaneGeometry(width, depth);
+    geometry.rotateX(-Math.PI / 2);
+    const field = new THREE.Mesh(geometry, (patchIndex + index) % 2 === 0 ? fieldMaterialA : fieldMaterialB);
+    field.position.set(x, y, z);
+    field.rotation.y = rotation + (patchIndex % 2 === 0 ? 0.08 : -0.07);
+    field.renderOrder = 3.6;
+    scene.add(field);
+  });
+}
+
+function addHamlet(
+  scene: THREE.Scene,
+  x: number,
+  z: number,
+  rotation: number,
+  color: number,
+  index: number,
+): void {
+  const y = terrainHeight(x, z);
+  const group = new THREE.Group();
+  group.position.set(x, y, z);
+  group.rotation.y = rotation;
+
+  const stone = new THREE.MeshStandardMaterial({ color: 0xb8ae96, roughness: 1 });
+  const roofColor = new THREE.Color(color).lerp(new THREE.Color(0x5a4c42), 0.55);
+  const roof = new THREE.MeshStandardMaterial({ color: roofColor, roughness: 0.94 });
+
+  const offsets: readonly [number, number, number][] = [
+    [-0.3, -0.08, 0.16],
+    [0.16, -0.22, 0.14],
+    [0.28, 0.2, 0.15],
+    [-0.14, 0.28, 0.13],
+    [0.04, 0.02, 0.17],
+  ];
+
+  offsets.forEach(([dx, dz, size], houseIndex) => {
+    addHouse(
+      group,
+      dx,
+      dz,
+      size,
+      (houseIndex - 2) * 0.09 + index * 0.05,
+      stone,
+      roof,
+    );
+  });
+
+  scene.add(group);
+}
+
 function addApproachRoads(scene: THREE.Scene, capital: XZ, polygon: readonly XZ[]): void {
   const targets = [polygon[0], polygon[2], polygon[4]].filter((point): point is XZ => Boolean(point));
 
@@ -104,17 +212,17 @@ function addApproachRoads(scene: THREE.Scene, capital: XZ, polygon: readonly XZ[
     const endX = THREE.MathUtils.lerp(capitalX, targetX, 0.46);
     const endZ = THREE.MathUtils.lerp(capitalZ, targetZ, 0.46);
     const samples: RibbonSample[] = [];
-    const sampleCount = 18;
+    const sampleCount = 22;
 
     for (let i = 0; i <= sampleCount; i += 1) {
       const t = i / sampleCount;
       const curve = t * t * (3 - 2 * t);
-      const bend = Math.sin(t * Math.PI) * 0.18;
+      const bend = Math.sin(t * Math.PI) * 0.2;
       const x = THREE.MathUtils.lerp(capitalX, endX, t) + bend * (targetZ > capitalZ ? 1 : -1);
       const z = THREE.MathUtils.lerp(capitalZ, endZ, t) + bend * (targetX > capitalX ? -1 : 1);
       samples.push({
         position: new THREE.Vector3(x, terrainHeight(x, z) + 0.052, z),
-        width: THREE.MathUtils.lerp(0.16, 0.1, curve),
+        width: THREE.MathUtils.lerp(0.17, 0.095, curve),
       });
     }
 
@@ -123,7 +231,7 @@ function addApproachRoads(scene: THREE.Scene, capital: XZ, polygon: readonly XZ[
       new THREE.MeshBasicMaterial({
         color: 0x8e8265,
         transparent: true,
-        opacity: 0.42,
+        opacity: 0.46,
         depthWrite: false,
       }),
     );
