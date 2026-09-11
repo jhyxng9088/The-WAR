@@ -69,7 +69,7 @@ function fogUniforms(extra: Record<string, THREE.IUniform>): Record<string, THRE
 
 const LAND_TEXTURE = new THREE.TextureLoader().load(TERRAIN_BAKED_TEXTURE);
 LAND_TEXTURE.colorSpace = THREE.SRGBColorSpace;
-LAND_TEXTURE.flipY = false;
+LAND_TEXTURE.flipY = true;
 LAND_TEXTURE.minFilter = THREE.LinearMipmapLinearFilter;
 LAND_TEXTURE.magFilter = THREE.LinearFilter;
 LAND_TEXTURE.generateMipmaps = true;
