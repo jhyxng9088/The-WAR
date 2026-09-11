@@ -10,8 +10,8 @@ export function addTerritory(scene: THREE.Scene, territory: StrategicTerritory):
   if (territory.polygon.length < 3) return;
   addTerrainTint(scene, territory);
   const border = sampleBorder(territory.polygon);
-  addBorder(scene, 0x182129, border, 0.38, 0.34, 4.5);
-  addBorder(scene, territory.color, border, 0.22, 0.96, 4.7);
+  addBorder(scene, 0x172028, border, 0.42, 0.34, 4.5);
+  addBorder(scene, territory.color, border, 0.25, 0.98, 4.7);
 }
 
 function addTerrainTint(scene: THREE.Scene, territory: StrategicTerritory): void {
@@ -21,7 +21,7 @@ function addTerrainTint(scene: THREE.Scene, territory: StrategicTerritory): void
     new THREE.MeshBasicMaterial({
       color: territory.color,
       transparent: true,
-      opacity: 0.17,
+      opacity: 0.255,
       depthWrite: false,
       polygonOffset: true,
       polygonOffsetFactor: -1,
