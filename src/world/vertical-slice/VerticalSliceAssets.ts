@@ -18,7 +18,7 @@ interface SliceData {
   border: Point2[];
 }
 
-const data = rawSliceData as SliceData;
+const data = rawSliceData as unknown as SliceData;
 const heightBytes = decodeBase64(data.heightU8);
 const splatBytes = decodeBase64(data.splatRGB);
 
@@ -34,7 +34,7 @@ export const SLICE_CITY = data.city;
 export const SLICE_BORDER = data.border;
 
 export function verticalSliceAssetUrl(name: string): string {
-  return `${import.meta.env.BASE_URL}assets/vertical-slice/${name}`;
+  return new URL(`assets/vertical-slice/${name}`, document.baseURI).toString();
 }
 
 export function heightAt(x: number, z: number): number {
