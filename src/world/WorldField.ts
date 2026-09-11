@@ -1,48 +1,74 @@
-export const WORLD_WIDTH = 32;
-export const WORLD_DEPTH = 24;
-export const TERRAIN_SEGMENTS_X = 104;
-export const TERRAIN_SEGMENTS_Z = 78;
+export const WORLD_WIDTH = 64;
+export const WORLD_DEPTH = 44;
+export const WORLD_HALF_WIDTH = WORLD_WIDTH / 2;
+export const WORLD_HALF_DEPTH = WORLD_DEPTH / 2;
+export const TERRAIN_SEGMENTS_X = 168;
+export const TERRAIN_SEGMENTS_Z = 116;
 
 export type XZ = readonly [number, number];
 
-export const RIVER_PATH: readonly XZ[] = [
-  [8.8, -3.2],
-  [7.0, -2.2],
-  [5.3, -1.4],
-  [3.8, -0.2],
-  [2.1, 0.4],
-  [0.5, 1.1],
-  [-1.3, 1.5],
-  [-3.2, 2.5],
-  [-5.2, 3.4],
-  [-7.2, 4.6],
-  [-9.8, 5.5],
+export const RIVER_PATHS: readonly (readonly XZ[])[] = [
+  [
+    [24.0, -5.8],
+    [20.5, -3.9],
+    [16.8, -1.8],
+    [12.4, 0.2],
+    [7.8, 1.8],
+    [3.1, 2.7],
+    [-1.8, 3.5],
+    [-7.2, 4.8],
+    [-12.8, 6.2],
+    [-18.7, 7.4],
+    [-25.8, 8.3],
+  ],
+  [
+    [10.6, 15.4],
+    [9.4, 12.0],
+    [7.5, 9.2],
+    [5.7, 6.8],
+    [4.1, 4.8],
+    [3.1, 2.7],
+  ],
+  [
+    [-2.8, -15.8],
+    [-1.7, -11.6],
+    [-0.8, -7.8],
+    [0.3, -4.5],
+    [1.7, -1.2],
+    [3.1, 2.7],
+  ],
 ];
 
 export function terrainHeight(x: number, z: number): number {
   const island = islandSignal(x, z);
 
   if (island <= 0) {
-    return -0.92 + island * 0.72;
+    return -1.05 + island * 0.72;
   }
 
-  const westernRidge = elongatedGaussian(x, z, -2.4, -3.3, 13.5, 2.8, -0.28) * 1.28;
-  const easternRidge = elongatedGaussian(x, z, 5.1, -1.1, 10.5, 2.1, 0.48) * 2.05;
-  const northernHighland = elongatedGaussian(x, z, 1.4, 5.8, 19, 5.5, -0.08) * 0.72;
-  const rolling =
-    valueNoise(x * 0.46, z * 0.46) * 0.15 +
-    valueNoise(x * 0.92 + 8.3, z * 0.92 - 3.7) * 0.06;
+  const westernRidge = elongatedGaussian(x, z, -12.5, -5.2, 48, 5.8, -0.34) * 1.55;
+  const centralRidge = elongatedGaussian(x, z, 5.7, -4.0, 34, 4.2, 0.42) * 2.28;
+  const northEasternRange = elongatedGaussian(x, z, 15.5, 8.2, 30, 4.6, -0.52) * 2.0;
+  const northernHighland = elongatedGaussian(x, z, -1.0, 11.8, 52, 12, -0.04) * 0.72;
+  const southernShelf = elongatedGaussian(x, z, -8.0, -13.6, 42, 10, 0.12) * 0.46;
 
-  const riverDistance = distanceToPolyline(x, z, RIVER_PATH);
-  const riverValley = Math.exp(-(riverDistance * riverDistance) / 1.45) * 0.22;
-  const riverBed = Math.exp(-(riverDistance * riverDistance) / 0.085) * 0.16;
+  const rolling =
+    valueNoise(x * 0.24, z * 0.24) * 0.18 +
+    valueNoise(x * 0.5 + 8.3, z * 0.5 - 3.7) * 0.08 +
+    valueNoise(x * 1.05 - 2.1, z * 1.05 + 11.4) * 0.025;
+
+  const riverDistance = riverDistanceAt(x, z);
+  const riverValley = Math.exp(-(riverDistance * riverDistance) / 2.1) * 0.25;
+  const riverBed = Math.exp(-(riverDistance * riverDistance) / 0.11) * 0.18;
 
   return (
-    0.1 +
-    Math.pow(island, 0.72) * 0.78 +
+    0.12 +
+    Math.pow(island, 0.72) * 0.86 +
     westernRidge +
-    easternRidge +
+    centralRidge +
+    northEasternRange +
     northernHighland +
+    southernShelf +
     rolling -
     riverValley -
     riverBed
@@ -50,46 +76,58 @@ export function terrainHeight(x: number, z: number): number {
 }
 
 export function islandSignal(x: number, z: number): number {
-  const ellipse = Math.sqrt((x * x) / (14.5 * 14.5) + (z * z) / (10.4 * 10.4));
-  const macro = valueNoise(x * 0.16 + 5.1, z * 0.16 - 1.7) * 0.14;
-  const coast = valueNoise(x * 0.43 - 2.3, z * 0.43 + 7.8) * 0.075;
-  const micro = valueNoise(x * 0.91 + 11.2, z * 0.91 + 4.2) * 0.025;
+  const ellipse = Math.sqrt((x * x) / (29.4 * 29.4) + (z * z) / (19.6 * 19.6));
+  const macro = valueNoise(x * 0.085 + 5.1, z * 0.085 - 1.7) * 0.16;
+  const coast = valueNoise(x * 0.22 - 2.3, z * 0.22 + 7.8) * 0.075;
+  const micro = valueNoise(x * 0.52 + 11.2, z * 0.52 + 4.2) * 0.018;
   return 1 - ellipse + macro + coast + micro;
 }
 
 export function isLandAt(x: number, z: number): boolean {
-  return islandSignal(x, z) > 0.012;
+  return islandSignal(x, z) > 0.01;
 }
 
 export function riverDistanceAt(x: number, z: number): number {
-  return distanceToPolyline(x, z, RIVER_PATH);
+  let best = Number.POSITIVE_INFINITY;
+
+  for (const path of RIVER_PATHS) {
+    best = Math.min(best, distanceToPolyline(x, z, path));
+  }
+
+  return best;
 }
 
 export function fertilityAt(x: number, z: number): number {
   if (!isLandAt(x, z)) return 0;
 
   const height = terrainHeight(x, z);
-  const river = Math.exp(-Math.pow(riverDistanceAt(x, z), 2) / 3.1);
-  const lowland = 1 - clamp01((height - 0.35) / 1.7);
-  return clamp01(0.22 + river * 0.62 + lowland * 0.34);
+  const river = Math.exp(-Math.pow(riverDistanceAt(x, z), 2) / 5.4);
+  const lowland = 1 - clamp01((height - 0.42) / 2.0);
+  return clamp01(0.18 + river * 0.68 + lowland * 0.32);
 }
 
 export function forestDensityAt(x: number, z: number): number {
   if (!isLandAt(x, z)) return 0;
 
-  const west = elongatedGaussian(x, z, -7.0, -2.8, 16, 8, 0.18);
-  const north = elongatedGaussian(x, z, 0.4, 5.1, 13, 5.5, -0.14);
-  const southeast = elongatedGaussian(x, z, 7.6, 3.0, 8.5, 6, 0.36) * 0.72;
-  const breakup = valueNoise(x * 0.78 + 2.1, z * 0.78 - 5.4) * 0.26;
-  const riverClearing = Math.exp(-Math.pow(riverDistanceAt(x, z), 2) / 0.72) * 0.55;
-  const highlandPenalty = clamp01((terrainHeight(x, z) - 1.32) / 1.2) * 0.7;
-  return clamp01(Math.max(west, north, southeast) + breakup - riverClearing - highlandPenalty);
+  const farWest = elongatedGaussian(x, z, -20.0, -2.2, 34, 13, 0.18);
+  const northWest = elongatedGaussian(x, z, -10.0, 11.0, 31, 10, -0.2);
+  const north = elongatedGaussian(x, z, 2.0, 14.0, 30, 8.5, 0.08);
+  const southCentral = elongatedGaussian(x, z, 2.5, -12.8, 34, 10, -0.12);
+  const east = elongatedGaussian(x, z, 20.0, 2.5, 26, 12, 0.34) * 0.86;
+  const breakup = valueNoise(x * 0.43 + 2.1, z * 0.43 - 5.4) * 0.27;
+  const riverClearing = Math.exp(-Math.pow(riverDistanceAt(x, z), 2) / 1.15) * 0.52;
+  const highlandPenalty = clamp01((terrainHeight(x, z) - 1.55) / 1.3) * 0.72;
+
+  return clamp01(
+    Math.max(farWest, northWest, north, southCentral, east) + breakup - riverClearing - highlandPenalty,
+  );
 }
 
 export function mountainStrengthAt(x: number, z: number): number {
-  const east = elongatedGaussian(x, z, 5.1, -1.1, 10.5, 2.1, 0.48);
-  const west = elongatedGaussian(x, z, -2.4, -3.3, 13.5, 2.8, -0.28) * 0.58;
-  return clamp01(Math.max(east, west));
+  const west = elongatedGaussian(x, z, -12.5, -5.2, 48, 5.8, -0.34) * 0.68;
+  const center = elongatedGaussian(x, z, 5.7, -4.0, 34, 4.2, 0.42);
+  const northEast = elongatedGaussian(x, z, 15.5, 8.2, 30, 4.6, -0.52) * 0.92;
+  return clamp01(Math.max(west, center, northEast));
 }
 
 export function deterministic01(x: number, z: number, seed = 0): number {
