@@ -1,14 +1,17 @@
 import * as THREE from 'three';
+import { WORLD_HALF_DEPTH, WORLD_HALF_WIDTH } from '../world/WorldField';
 
-const CAMERA_OFFSET = new THREE.Vector3(19, 18, 22);
+const CAMERA_OFFSET = new THREE.Vector3(18, 14, 21);
 const GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const PAN_MARGIN_X = 7;
+const PAN_MARGIN_Z = 6;
 
 export class WorldCamera {
-  readonly camera = new THREE.OrthographicCamera(-16, 16, 10, -10, 0.1, 120);
+  readonly camera = new THREE.OrthographicCamera(-16, 16, 10, -10, 0.1, 160);
 
-  private readonly target = new THREE.Vector3(0, 0.45, 0);
+  private readonly target = new THREE.Vector3(0, 0.7, 1.4);
   private readonly raycaster = new THREE.Raycaster();
-  private readonly viewHeight = 22;
+  private readonly viewHeight = 18;
 
   constructor() {
     this.camera.position.copy(this.target).add(CAMERA_OFFSET);
@@ -29,13 +32,21 @@ export class WorldCamera {
   }
 
   panGround(delta: THREE.Vector3): void {
-    this.target.x = THREE.MathUtils.clamp(this.target.x + delta.x, -8, 8);
-    this.target.z = THREE.MathUtils.clamp(this.target.z + delta.z, -6, 6);
+    this.target.x = THREE.MathUtils.clamp(
+      this.target.x + delta.x,
+      -WORLD_HALF_WIDTH + PAN_MARGIN_X,
+      WORLD_HALF_WIDTH - PAN_MARGIN_X,
+    );
+    this.target.z = THREE.MathUtils.clamp(
+      this.target.z + delta.z,
+      -WORLD_HALF_DEPTH + PAN_MARGIN_Z,
+      WORLD_HALF_DEPTH - PAN_MARGIN_Z,
+    );
     this.syncPosition();
   }
 
   zoomBy(scale: number): void {
-    this.camera.zoom = THREE.MathUtils.clamp(this.camera.zoom * scale, 0.72, 2.7);
+    this.camera.zoom = THREE.MathUtils.clamp(this.camera.zoom * scale, 0.52, 3.3);
     this.camera.updateProjectionMatrix();
   }
 
