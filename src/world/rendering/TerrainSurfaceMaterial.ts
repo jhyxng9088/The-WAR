@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { TERRAIN_BAKED_TEXTURE } from './terrainBakedTexture';
 
 const OCEAN_VERTEX_SHADER = /* glsl */ `
   attribute float aShelf;
@@ -67,7 +66,7 @@ function fogUniforms(extra: Record<string, THREE.IUniform>): Record<string, THRE
   return THREE.UniformsUtils.merge([THREE.UniformsLib.fog, extra]);
 }
 
-const LAND_TEXTURE = new THREE.TextureLoader().load(TERRAIN_BAKED_TEXTURE);
+const LAND_TEXTURE = new THREE.TextureLoader().load(new URL('terrain-baked.png', document.baseURI).href);
 LAND_TEXTURE.colorSpace = THREE.SRGBColorSpace;
 LAND_TEXTURE.flipY = true;
 LAND_TEXTURE.minFilter = THREE.LinearMipmapLinearFilter;
@@ -81,6 +80,8 @@ export function createLandSurfaceMaterial(): THREE.MeshBasicMaterial {
     color: 0xffffff,
     fog: true,
     toneMapped: true,
+    alphaTest: 0.08,
+    alphaToCoverage: true,
   });
 }
 
