@@ -3,6 +3,9 @@ import { WorldCamera } from '../camera/WorldCamera';
 
 type PointerState = { x: number; y: number };
 
+const PINCH_RESPONSE = 1.18;
+const WHEEL_RESPONSE = 0.00155;
+
 export class WorldInput {
   private readonly pointers = new Map<number, PointerState>();
   private lastPinchDistance: number | null = null;
@@ -51,7 +54,8 @@ export class WorldInput {
     if (this.pointers.size === 2) {
       const distance = this.getPinchDistance();
       if (distance !== null && this.lastPinchDistance !== null && this.lastPinchDistance > 0) {
-        this.camera.zoomBy(distance / this.lastPinchDistance);
+        const ratio = distance / this.lastPinchDistance;
+        this.camera.zoomBy(Math.pow(ratio, PINCH_RESPONSE));
       }
       this.lastPinchDistance = distance;
     }
@@ -64,7 +68,7 @@ export class WorldInput {
 
   private readonly onWheel = (event: WheelEvent): void => {
     event.preventDefault();
-    const scale = Math.exp(-event.deltaY * 0.0012);
+    const scale = Math.exp(-event.deltaY * WHEEL_RESPONSE);
     this.camera.zoomBy(scale);
   };
 
