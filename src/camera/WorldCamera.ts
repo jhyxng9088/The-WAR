@@ -3,17 +3,21 @@ import { SEA_LEVEL, WORLD_HALF_DEPTH, WORLD_HALF_WIDTH } from '../world/WorldFie
 
 const CAMERA_OFFSET = new THREE.Vector3(18, 18.8, 22.5);
 const GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-const PAN_MARGIN_X = 10;
-const PAN_MARGIN_Z = 9;
 const VIEW_HEIGHT = 18;
 const MIN_ZOOM = 0.24;
 const MAX_ZOOM = 4.1;
 const MAX_SUPPORTED_ASPECT = 2.75;
 const SURFACE_GUARD_BAND = 18;
+const WORLD_EDGE_GUARD = 5;
 
 export interface SurfaceCoverage {
   width: number;
   depth: number;
+}
+
+interface GroundHalfExtents {
+  x: number;
+  z: number;
 }
 
 export class WorldCamera {
@@ -26,6 +30,7 @@ export class WorldCamera {
     this.camera.position.copy(this.target).add(CAMERA_OFFSET);
     this.camera.lookAt(this.target);
     this.camera.zoom = 1;
+    this.camera.updateMatrixWorld(true);
   }
 
   static requiredSurfaceCoverage(): SurfaceCoverage {
@@ -61,12 +66,9 @@ export class WorldCamera {
       }
     }
 
-    const targetHalfX = WORLD_HALF_WIDTH - PAN_MARGIN_X;
-    const targetHalfZ = WORLD_HALF_DEPTH - PAN_MARGIN_Z;
-
     return {
-      width: (targetHalfX + viewHalfX + SURFACE_GUARD_BAND) * 2,
-      depth: (targetHalfZ + viewHalfZ + SURFACE_GUARD_BAND) * 2,
+      width: (WORLD_HALF_WIDTH + viewHalfX + SURFACE_GUARD_BAND) * 2,
+      depth: (WORLD_HALF_DEPTH + viewHalfZ + SURFACE_GUARD_BAND) * 2,
     };
   }
 
@@ -80,25 +82,19 @@ export class WorldCamera {
     this.camera.top = halfHeight;
     this.camera.bottom = -halfHeight;
     this.camera.updateProjectionMatrix();
+    this.clampTargetToVisibleWorld();
   }
 
   panGround(delta: THREE.Vector3): void {
-    this.target.x = THREE.MathUtils.clamp(
-      this.target.x + delta.x,
-      -WORLD_HALF_WIDTH + PAN_MARGIN_X,
-      WORLD_HALF_WIDTH - PAN_MARGIN_X,
-    );
-    this.target.z = THREE.MathUtils.clamp(
-      this.target.z + delta.z,
-      -WORLD_HALF_DEPTH + PAN_MARGIN_Z,
-      WORLD_HALF_DEPTH - PAN_MARGIN_Z,
-    );
-    this.syncPosition();
+    this.target.x += delta.x;
+    this.target.z += delta.z;
+    this.clampTargetToVisibleWorld();
   }
 
   zoomBy(scale: number): void {
     this.camera.zoom = THREE.MathUtils.clamp(this.camera.zoom * scale, MIN_ZOOM, MAX_ZOOM);
     this.camera.updateProjectionMatrix();
+    this.clampTargetToVisibleWorld();
   }
 
   groundPoint(clientX: number, clientY: number, rect: DOMRect): THREE.Vector3 | null {
@@ -112,9 +108,41 @@ export class WorldCamera {
     return this.raycaster.ray.intersectPlane(GROUND, point) ? point : null;
   }
 
+  private clampTargetToVisibleWorld(): void {
+    this.syncPosition();
+    const extents = this.currentGroundHalfExtents();
+    const maxTargetX = Math.max(0, WORLD_HALF_WIDTH - extents.x - WORLD_EDGE_GUARD);
+    const maxTargetZ = Math.max(0, WORLD_HALF_DEPTH - extents.z - WORLD_EDGE_GUARD);
+
+    const nextX = THREE.MathUtils.clamp(this.target.x, -maxTargetX, maxTargetX);
+    const nextZ = THREE.MathUtils.clamp(this.target.z, -maxTargetZ, maxTargetZ);
+    if (nextX === this.target.x && nextZ === this.target.z) return;
+
+    this.target.x = nextX;
+    this.target.z = nextZ;
+    this.syncPosition();
+  }
+
+  private currentGroundHalfExtents(): GroundHalfExtents {
+    let halfX = 0;
+    let halfZ = 0;
+
+    for (const ndcX of [-1, 1]) {
+      for (const ndcY of [-1, 1]) {
+        this.raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), this.camera);
+        const point = this.raycaster.ray.intersectPlane(GROUND, new THREE.Vector3());
+        if (!point) continue;
+        halfX = Math.max(halfX, Math.abs(point.x - this.target.x));
+        halfZ = Math.max(halfZ, Math.abs(point.z - this.target.z));
+      }
+    }
+
+    return { x: halfX, z: halfZ };
+  }
+
   private syncPosition(): void {
     this.camera.position.copy(this.target).add(CAMERA_OFFSET);
     this.camera.lookAt(this.target);
-    this.camera.updateMatrixWorld();
+    this.camera.updateMatrixWorld(true);
   }
 }
