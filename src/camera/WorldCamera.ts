@@ -1,14 +1,14 @@
 import * as THREE from 'three';
 
-const CAMERA_OFFSET = new THREE.Vector3(18, 24, 18);
+const CAMERA_OFFSET = new THREE.Vector3(19, 18, 22);
 const GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
 export class WorldCamera {
   readonly camera = new THREE.OrthographicCamera(-16, 16, 10, -10, 0.1, 120);
 
-  private readonly target = new THREE.Vector3(0, 0, 0);
+  private readonly target = new THREE.Vector3(0, 0.45, 0);
   private readonly raycaster = new THREE.Raycaster();
-  private viewHeight = 22;
+  private readonly viewHeight = 22;
 
   constructor() {
     this.camera.position.copy(this.target).add(CAMERA_OFFSET);
@@ -35,7 +35,7 @@ export class WorldCamera {
   }
 
   zoomBy(scale: number): void {
-    this.camera.zoom = THREE.MathUtils.clamp(this.camera.zoom * scale, 0.72, 2.5);
+    this.camera.zoom = THREE.MathUtils.clamp(this.camera.zoom * scale, 0.72, 2.7);
     this.camera.updateProjectionMatrix();
   }
 
