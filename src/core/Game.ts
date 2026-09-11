@@ -11,6 +11,7 @@ export class Game {
   private readonly input: WorldInput;
   private readonly performance: RenderPerformance;
   private frameId: number | null = null;
+  private resizeFrameId: number | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({
@@ -21,10 +22,10 @@ export class Game {
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.04;
+    this.renderer.toneMappingExposure = 0.96;
 
-    this.scene.background = new THREE.Color(0x708b91);
-    this.scene.fog = new THREE.Fog(0x708b91, 180, 460);
+    this.scene.background = new THREE.Color(0x657477);
+    this.scene.fog = new THREE.Fog(0x657477, 205, 540);
 
     this.camera = new WorldCamera();
     this.input = new WorldInput(canvas, this.camera);
@@ -33,9 +34,10 @@ export class Game {
     createPrototypeWorld(this.scene);
     this.resize();
 
-    window.addEventListener('resize', this.resize, { passive: true });
-    window.addEventListener('orientationchange', this.resize, { passive: true });
-    window.visualViewport?.addEventListener('resize', this.resize, { passive: true });
+    window.addEventListener('resize', this.queueResize, { passive: true });
+    window.addEventListener('orientationchange', this.queueResize, { passive: true });
+    window.visualViewport?.addEventListener('resize', this.queueResize, { passive: true });
+    window.visualViewport?.addEventListener('scroll', this.queueResize, { passive: true });
   }
 
   start(): void {
@@ -52,21 +54,37 @@ export class Game {
 
   dispose(): void {
     if (this.frameId !== null) cancelAnimationFrame(this.frameId);
+    if (this.resizeFrameId !== null) cancelAnimationFrame(this.resizeFrameId);
     this.frameId = null;
+    this.resizeFrameId = null;
     this.input.dispose();
-    window.removeEventListener('resize', this.resize);
-    window.removeEventListener('orientationchange', this.resize);
-    window.visualViewport?.removeEventListener('resize', this.resize);
+    window.removeEventListener('resize', this.queueResize);
+    window.removeEventListener('orientationchange', this.queueResize);
+    window.visualViewport?.removeEventListener('resize', this.queueResize);
+    window.visualViewport?.removeEventListener('scroll', this.queueResize);
     this.renderer.dispose();
   }
+
+  private readonly queueResize = (): void => {
+    if (this.resizeFrameId !== null) return;
+    this.resizeFrameId = requestAnimationFrame(() => {
+      this.resizeFrameId = null;
+      this.resize();
+    });
+  };
 
   private readonly resize = (): void => {
     const viewport = window.visualViewport;
     const width = Math.max(1, Math.round(viewport?.width ?? window.innerWidth ?? this.canvas.clientWidth));
     const height = Math.max(1, Math.round(viewport?.height ?? window.innerHeight ?? this.canvas.clientHeight));
+    const offsetLeft = Math.round(viewport?.offsetLeft ?? 0);
+    const offsetTop = Math.round(viewport?.offsetTop ?? 0);
 
     const host = this.canvas.parentElement;
     if (host) {
+      host.style.inset = 'auto';
+      host.style.left = `${offsetLeft}px`;
+      host.style.top = `${offsetTop}px`;
       host.style.width = `${width}px`;
       host.style.height = `${height}px`;
     }

@@ -24,7 +24,8 @@ body {
 
 #app {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
   width: 100vw;
   height: 100dvh;
   min-height: 100svh;

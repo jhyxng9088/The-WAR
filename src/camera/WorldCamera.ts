@@ -1,14 +1,16 @@
 import * as THREE from 'three';
 import { SEA_LEVEL, WORLD_HALF_DEPTH, WORLD_HALF_WIDTH } from '../world/WorldField';
 
-const CAMERA_OFFSET = new THREE.Vector3(18, 18.8, 22.5);
+const CAMERA_OFFSET = new THREE.Vector3(15.5, 29, 19.5);
 const GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-const VIEW_HEIGHT = 18;
-const MIN_ZOOM = 0.24;
-const MAX_ZOOM = 4.1;
+const VIEW_HEIGHT = 19.5;
+const MIN_ZOOM = 0.18;
+const MAX_ZOOM = 4.4;
 const MAX_SUPPORTED_ASPECT = 2.75;
-const SURFACE_GUARD_BAND = 18;
-const WORLD_EDGE_GUARD = 5;
+const SURFACE_GUARD_BAND = 20;
+const LAND_VIEW_HALF_WIDTH = WORLD_HALF_WIDTH - 11;
+const LAND_VIEW_HALF_DEPTH = WORLD_HALF_DEPTH - 9;
+const WORLD_EDGE_GUARD = 3;
 
 export interface SurfaceCoverage {
   width: number;
@@ -21,7 +23,7 @@ interface GroundHalfExtents {
 }
 
 export class WorldCamera {
-  readonly camera = new THREE.OrthographicCamera(-16, 16, 10, -10, 0.1, 280);
+  readonly camera = new THREE.OrthographicCamera(-16, 16, 10, -10, 0.1, 360);
 
   private readonly target = new THREE.Vector3(0, 0.8, 1.4);
   private readonly raycaster = new THREE.Raycaster();
@@ -43,7 +45,7 @@ export class WorldCamera {
       halfHeight,
       -halfHeight,
       0.1,
-      280,
+      360,
     );
     probe.position.copy(target).add(CAMERA_OFFSET);
     probe.lookAt(target);
@@ -111,8 +113,8 @@ export class WorldCamera {
   private clampTargetToVisibleWorld(): void {
     this.syncPosition();
     const extents = this.currentGroundHalfExtents();
-    const maxTargetX = Math.max(0, WORLD_HALF_WIDTH - extents.x - WORLD_EDGE_GUARD);
-    const maxTargetZ = Math.max(0, WORLD_HALF_DEPTH - extents.z - WORLD_EDGE_GUARD);
+    const maxTargetX = Math.max(0, LAND_VIEW_HALF_WIDTH - extents.x - WORLD_EDGE_GUARD);
+    const maxTargetZ = Math.max(0, LAND_VIEW_HALF_DEPTH - extents.z - WORLD_EDGE_GUARD);
 
     const nextX = THREE.MathUtils.clamp(this.target.x, -maxTargetX, maxTargetX);
     const nextZ = THREE.MathUtils.clamp(this.target.z, -maxTargetZ, maxTargetZ);

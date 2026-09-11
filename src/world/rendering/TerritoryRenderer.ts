@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { createRibbonGeometry, type RibbonSample } from '../../rendering/geometry/createRibbonGeometry';
-import { terrainHeight, type XZ } from '../WorldField';
+import { deterministic01, terrainHeight, type XZ } from '../WorldField';
 
 export interface TerritoryVisual {
   color: number;
@@ -16,9 +16,9 @@ export function addTerritory(scene: THREE.Scene, territory: TerritoryVisual): vo
   const borderPoints = sampleSmoothBorder(territory.polygon);
   addTint(scene, territory.color, borderPoints);
   addBorder(scene, territory.color, borderPoints);
-  addDistrictDetails(scene, territory.capital, territory.polygon, territory.color);
+  addRegionalLandUse(scene, territory.capital, territory.polygon, territory.color);
   addApproachRoads(scene, territory.capital, territory.polygon);
-  addCapital(scene, territory.capital, territory.color);
+  addCapitalMarker(scene, territory.capital, territory.color);
 }
 
 function sampleSmoothBorder(polygon: readonly XZ[]): XZ[] {
@@ -30,7 +30,7 @@ function sampleSmoothBorder(polygon: readonly XZ[]): XZ[] {
   );
 
   const samples: XZ[] = [];
-  const count = Math.max(72, polygon.length * 14);
+  const count = Math.max(84, polygon.length * 16);
   for (let i = 0; i < count; i += 1) {
     const point = curve.getPoint(i / count);
     samples.push([point.x, point.z]);
@@ -56,7 +56,7 @@ function addTint(scene: THREE.Scene, color: number, borderPoints: readonly XZ[])
   for (let i = 0; i < positions.count; i += 1) {
     const x = positions.getX(i);
     const z = positions.getY(i);
-    positions.setXYZ(i, x, terrainHeight(x, z) + 0.045, z);
+    positions.setXYZ(i, x, terrainHeight(x, z) + 0.055, z);
   }
   geometry.computeVertexNormals();
 
@@ -65,19 +65,19 @@ function addTint(scene: THREE.Scene, color: number, borderPoints: readonly XZ[])
     new THREE.MeshBasicMaterial({
       color,
       transparent: true,
-      opacity: 0.03,
+      opacity: 0.072,
       depthWrite: false,
       side: THREE.DoubleSide,
     }),
   );
-  tint.renderOrder = 4;
+  tint.renderOrder = 3.8;
   scene.add(tint);
 }
 
 function addBorder(scene: THREE.Scene, color: number, borderPoints: readonly XZ[]): void {
   const samples: RibbonSample[] = borderPoints.map(([x, z]) => ({
-    position: new THREE.Vector3(x, terrainHeight(x, z) + 0.07, z),
-    width: 0.075,
+    position: new THREE.Vector3(x, terrainHeight(x, z) + 0.088, z),
+    width: 0.14,
   }));
 
   const first = samples[0];
@@ -89,119 +89,100 @@ function addBorder(scene: THREE.Scene, color: number, borderPoints: readonly XZ[
     new THREE.MeshBasicMaterial({
       color,
       transparent: true,
-      opacity: 0.6,
+      opacity: 0.72,
       depthWrite: false,
     }),
   );
-  border.renderOrder = 5;
+  border.renderOrder = 4.4;
   scene.add(border);
 }
 
-function addDistrictDetails(
+function addRegionalLandUse(
   scene: THREE.Scene,
   capital: XZ,
   polygon: readonly XZ[],
   color: number,
 ): void {
-  const targetIndices = [1, 3, 5];
-  targetIndices.forEach((polygonIndex, index) => {
-    const target = polygon[polygonIndex];
-    if (!target) return;
-
-    const t = 0.3 + index * 0.035;
-    const x = THREE.MathUtils.lerp(capital[0], target[0], t);
-    const z = THREE.MathUtils.lerp(capital[1], target[1], t);
-    const rotation = Math.atan2(target[1] - capital[1], target[0] - capital[0]);
-
-    addFieldCluster(scene, x, z, rotation, index);
-    addHamlet(scene, x, z, rotation, color, index);
-  });
-}
-
-function addFieldCluster(
-  scene: THREE.Scene,
-  centerX: number,
-  centerZ: number,
-  rotation: number,
-  index: number,
-): void {
-  const fieldMaterialA = new THREE.MeshBasicMaterial({
-    color: 0x8c8b59,
+  const [capitalX, capitalZ] = capital;
+  const fieldGeometry = new THREE.PlaneGeometry(1, 1);
+  fieldGeometry.rotateX(-Math.PI / 2);
+  const fieldMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
     transparent: true,
-    opacity: 0.25,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-  });
-  const fieldMaterialB = new THREE.MeshBasicMaterial({
-    color: 0x718154,
-    transparent: true,
-    opacity: 0.22,
+    opacity: 0.2,
     depthWrite: false,
     side: THREE.DoubleSide,
   });
 
-  const offsets: readonly [number, number, number, number][] = [
-    [-1.05, -0.62, 1.45, 0.62],
-    [0.74, -0.5, 1.18, 0.54],
-    [-0.46, 0.72, 1.32, 0.56],
-    [0.96, 0.66, 0.95, 0.48],
-  ];
+  const fieldCount = 14;
+  const fields = new THREE.InstancedMesh(fieldGeometry, fieldMaterial, fieldCount);
+  const matrix = new THREE.Matrix4();
+  const quaternion = new THREE.Quaternion();
+  const scale = new THREE.Vector3();
+  const position = new THREE.Vector3();
+  const yAxis = new THREE.Vector3(0, 1, 0);
+  const greenField = new THREE.Color(0x788159);
+  const ochreField = new THREE.Color(0x91845d);
 
-  offsets.forEach(([dx, dz, width, depth], patchIndex) => {
-    const cos = Math.cos(rotation);
-    const sin = Math.sin(rotation);
-    const x = centerX + dx * cos - dz * sin;
-    const z = centerZ + dx * sin + dz * cos;
-    const y = terrainHeight(x, z) + 0.035;
+  for (let i = 0; i < fieldCount; i += 1) {
+    const angle = (i / fieldCount) * Math.PI * 2 + deterministic01(capitalX, capitalZ, i + 71) * 0.5;
+    const distance = 2.6 + deterministic01(capitalX, capitalZ, i + 83) * 3.6;
+    const x = capitalX + Math.cos(angle) * distance;
+    const z = capitalZ + Math.sin(angle) * distance * 0.74;
+    const y = terrainHeight(x, z) + 0.046;
+    const width = 1.1 + deterministic01(x, z, 91) * 1.45;
+    const depth = 0.48 + deterministic01(x, z, 97) * 0.72;
 
-    const geometry = new THREE.PlaneGeometry(width, depth);
-    geometry.rotateX(-Math.PI / 2);
-    const field = new THREE.Mesh(geometry, (patchIndex + index) % 2 === 0 ? fieldMaterialA : fieldMaterialB);
-    field.position.set(x, y, z);
-    field.rotation.y = rotation + (patchIndex % 2 === 0 ? 0.08 : -0.07);
-    field.renderOrder = 3.6;
-    scene.add(field);
-  });
-}
+    quaternion.setFromAxisAngle(yAxis, angle + (deterministic01(x, z, 101) - 0.5) * 0.5);
+    position.set(x, y, z);
+    scale.set(width, 1, depth);
+    matrix.compose(position, quaternion, scale);
+    fields.setMatrixAt(i, matrix);
+    fields.setColorAt(i, greenField.clone().lerp(ochreField, deterministic01(x, z, 103) * 0.78));
+  }
+  fields.instanceMatrix.needsUpdate = true;
+  if (fields.instanceColor) fields.instanceColor.needsUpdate = true;
+  fields.renderOrder = 3.5;
+  scene.add(fields);
 
-function addHamlet(
-  scene: THREE.Scene,
-  x: number,
-  z: number,
-  rotation: number,
-  color: number,
-  index: number,
-): void {
-  const y = terrainHeight(x, z);
-  const group = new THREE.Group();
-  group.position.set(x, y, z);
-  group.rotation.y = rotation;
+  const settlementGeometry = new THREE.CylinderGeometry(0.24, 0.3, 0.09, 8);
+  const settlementMaterial = new THREE.MeshStandardMaterial({ color: 0xb0a38b, roughness: 1 });
+  const settlementCount = 6;
+  const settlements = new THREE.InstancedMesh(settlementGeometry, settlementMaterial, settlementCount);
 
-  const stone = new THREE.MeshStandardMaterial({ color: 0xb8ae96, roughness: 1 });
-  const roofColor = new THREE.Color(color).lerp(new THREE.Color(0x5a4c42), 0.55);
-  const roof = new THREE.MeshStandardMaterial({ color: roofColor, roughness: 0.94 });
+  for (let i = 0; i < settlementCount; i += 1) {
+    const target = polygon[(i * 2 + 1) % polygon.length];
+    if (!target) continue;
+    const t = 0.22 + i * 0.025;
+    const x = THREE.MathUtils.lerp(capitalX, target[0], t);
+    const z = THREE.MathUtils.lerp(capitalZ, target[1], t);
+    const y = terrainHeight(x, z) + 0.045;
+    const s = 0.85 + deterministic01(x, z, 121) * 0.45;
 
-  const offsets: readonly [number, number, number][] = [
-    [-0.3, -0.08, 0.16],
-    [0.16, -0.22, 0.14],
-    [0.28, 0.2, 0.15],
-    [-0.14, 0.28, 0.13],
-    [0.04, 0.02, 0.17],
-  ];
+    position.set(x, y, z);
+    quaternion.identity();
+    scale.setScalar(s);
+    matrix.compose(position, quaternion, scale);
+    settlements.setMatrixAt(i, matrix);
+  }
+  settlements.instanceMatrix.needsUpdate = true;
+  scene.add(settlements);
 
-  offsets.forEach(([dx, dz, size], houseIndex) => {
-    addHouse(
-      group,
-      dx,
-      dz,
-      size,
-      (houseIndex - 2) * 0.09 + index * 0.05,
-      stone,
-      roof,
-    );
-  });
-
-  scene.add(group);
+  const district = new THREE.Mesh(
+    new THREE.CircleGeometry(2.15, 28),
+    new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.11,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    }),
+  );
+  district.rotation.x = -Math.PI / 2;
+  district.position.set(capitalX, terrainHeight(capitalX, capitalZ) + 0.052, capitalZ);
+  district.scale.set(1.28, 0.78, 1);
+  district.renderOrder = 3.7;
+  scene.add(district);
 }
 
 function addApproachRoads(scene: THREE.Scene, capital: XZ, polygon: readonly XZ[]): void {
@@ -209,29 +190,28 @@ function addApproachRoads(scene: THREE.Scene, capital: XZ, polygon: readonly XZ[
 
   for (const [targetX, targetZ] of targets) {
     const [capitalX, capitalZ] = capital;
-    const endX = THREE.MathUtils.lerp(capitalX, targetX, 0.46);
-    const endZ = THREE.MathUtils.lerp(capitalZ, targetZ, 0.46);
+    const endX = THREE.MathUtils.lerp(capitalX, targetX, 0.48);
+    const endZ = THREE.MathUtils.lerp(capitalZ, targetZ, 0.48);
     const samples: RibbonSample[] = [];
-    const sampleCount = 22;
+    const sampleCount = 20;
 
     for (let i = 0; i <= sampleCount; i += 1) {
       const t = i / sampleCount;
-      const curve = t * t * (3 - 2 * t);
-      const bend = Math.sin(t * Math.PI) * 0.2;
+      const bend = Math.sin(t * Math.PI) * 0.26;
       const x = THREE.MathUtils.lerp(capitalX, endX, t) + bend * (targetZ > capitalZ ? 1 : -1);
       const z = THREE.MathUtils.lerp(capitalZ, endZ, t) + bend * (targetX > capitalX ? -1 : 1);
       samples.push({
-        position: new THREE.Vector3(x, terrainHeight(x, z) + 0.052, z),
-        width: THREE.MathUtils.lerp(0.17, 0.095, curve),
+        position: new THREE.Vector3(x, terrainHeight(x, z) + 0.062, z),
+        width: THREE.MathUtils.lerp(0.16, 0.08, t),
       });
     }
 
     const road = new THREE.Mesh(
       createRibbonGeometry(samples),
       new THREE.MeshBasicMaterial({
-        color: 0x8e8265,
+        color: 0x82755e,
         transparent: true,
-        opacity: 0.46,
+        opacity: 0.52,
         depthWrite: false,
       }),
     );
@@ -240,113 +220,47 @@ function addApproachRoads(scene: THREE.Scene, capital: XZ, polygon: readonly XZ[
   }
 }
 
-function addCapital(scene: THREE.Scene, [x, z]: XZ, color: number): void {
+function addCapitalMarker(scene: THREE.Scene, [x, z]: XZ, color: number): void {
   const y = terrainHeight(x, z);
   const group = new THREE.Group();
   group.position.set(x, y, z);
-  group.scale.setScalar(1.42);
 
-  const stone = new THREE.MeshStandardMaterial({ color: 0xc9bea3, roughness: 0.96 });
-  const darkStone = new THREE.MeshStandardMaterial({ color: 0x8f8877, roughness: 1 });
-  const roof = new THREE.MeshStandardMaterial({ color, roughness: 0.82 });
-  const wood = new THREE.MeshStandardMaterial({ color: 0x55483a, roughness: 1 });
+  const foundation = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.9, 1.02, 0.13, 12),
+    new THREE.MeshStandardMaterial({ color: 0xa99f8c, roughness: 1 }),
+  );
+  foundation.position.y = 0.065;
+  group.add(foundation);
 
-  const keep = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.74, 0.62), stone);
-  keep.position.y = 0.37;
-  group.add(keep);
+  const hub = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.38, 0.44, 0.24, 10),
+    new THREE.MeshStandardMaterial({ color: 0xc0b49b, roughness: 0.96 }),
+  );
+  hub.position.y = 0.22;
+  group.add(hub);
 
-  const keepRoof = new THREE.Mesh(new THREE.ConeGeometry(0.47, 0.37, 4), roof);
-  keepRoof.rotation.y = Math.PI / 4;
-  keepRoof.position.y = 0.92;
-  group.add(keepRoof);
+  const marker = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.26, 0),
+    new THREE.MeshStandardMaterial({ color, roughness: 0.72 }),
+  );
+  marker.position.y = 0.58;
+  marker.scale.y = 1.35;
+  group.add(marker);
 
-  addWall(group, 0, 0.14, -0.78, 1.56, 0.22, 0.13, darkStone);
-  addWall(group, 0, 0.14, 0.78, 1.56, 0.22, 0.13, darkStone);
-  addWall(group, -0.78, 0.14, 0, 0.13, 0.22, 1.56, darkStone);
-  addWall(group, 0.78, 0.14, 0, 0.13, 0.22, 1.56, darkStone);
-
-  const towerGeometry = new THREE.CylinderGeometry(0.13, 0.15, 0.4, 8);
-  const towerRoofGeometry = new THREE.ConeGeometry(0.17, 0.18, 8);
-  const towerOffsets: readonly XZ[] = [
-    [-0.78, -0.78], [0.78, -0.78], [-0.78, 0.78], [0.78, 0.78],
-  ];
-  for (const [dx, dz] of towerOffsets) {
-    const tower = new THREE.Mesh(towerGeometry, stone);
-    tower.position.set(dx, 0.2, dz);
-    group.add(tower);
-
-    const towerRoof = new THREE.Mesh(towerRoofGeometry, roof);
-    towerRoof.position.set(dx, 0.49, dz);
-    group.add(towerRoof);
-  }
-
-  const houses: readonly [number, number, number, number][] = [
-    [-0.46, -0.34, 0.25, 0.0],
-    [0.42, -0.38, 0.23, 0.22],
-    [-0.4, 0.4, 0.22, -0.18],
-    [0.44, 0.36, 0.24, 0.12],
-    [0.04, -0.56, 0.2, -0.08],
-    [-1.08, -0.2, 0.24, 0.22],
-    [1.04, 0.12, 0.22, -0.18],
-    [-0.94, 0.54, 0.2, 0.08],
-    [0.9, -0.56, 0.22, 0.18],
-    [-0.28, 1.02, 0.21, -0.14],
-    [0.36, 1.08, 0.2, 0.2],
-    [0.2, -1.08, 0.22, -0.2],
-  ];
-  for (const [dx, dz, size, rotation] of houses) {
-    addHouse(group, dx, dz, size, rotation, stone, roof);
-  }
-
-  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.7, 6), wood);
-  mast.position.set(0.38, 1.08, 0.12);
+  const mast = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.022, 0.022, 0.72, 6),
+    new THREE.MeshStandardMaterial({ color: 0x4b443a, roughness: 1 }),
+  );
+  mast.position.set(0.42, 0.48, 0);
   group.add(mast);
 
-  const flagGeometry = new THREE.PlaneGeometry(0.42, 0.21);
-  const flag = new THREE.Mesh(flagGeometry, new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }));
-  flag.position.set(0.59, 1.3, 0.12);
+  const flag = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.42, 0.2),
+    new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }),
+  );
+  flag.position.set(0.63, 0.72, 0);
   flag.rotation.y = Math.PI / 2;
   group.add(flag);
 
   scene.add(group);
-}
-
-function addWall(
-  group: THREE.Group,
-  x: number,
-  y: number,
-  z: number,
-  width: number,
-  height: number,
-  depth: number,
-  material: THREE.Material,
-): void {
-  const wall = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
-  wall.position.set(x, y, z);
-  group.add(wall);
-}
-
-function addHouse(
-  group: THREE.Group,
-  x: number,
-  z: number,
-  size: number,
-  rotation: number,
-  stone: THREE.Material,
-  roof: THREE.Material,
-): void {
-  const houseGroup = new THREE.Group();
-  houseGroup.position.set(x, 0, z);
-  houseGroup.rotation.y = rotation;
-
-  const house = new THREE.Mesh(new THREE.BoxGeometry(size, size * 0.72, size * 0.88), stone);
-  house.position.y = size * 0.36;
-  houseGroup.add(house);
-
-  const houseRoof = new THREE.Mesh(new THREE.ConeGeometry(size * 0.72, size * 0.55, 4), roof);
-  houseRoof.rotation.y = Math.PI / 4;
-  houseRoof.position.y = size * 0.93;
-  houseGroup.add(houseRoof);
-
-  group.add(houseGroup);
 }
