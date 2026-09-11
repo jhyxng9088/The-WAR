@@ -1,14 +1,14 @@
 import * as THREE from 'three';
 import { SEA_LEVEL, WORLD_HALF_DEPTH, WORLD_HALF_WIDTH } from '../world/WorldField';
 
-const CAMERA_DIRECTION = new THREE.Vector3(0.33, 0.88, 0.34).normalize();
+const CAMERA_DIRECTION = new THREE.Vector3(0.28, 0.92, 0.29).normalize();
 const GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-const FOV = 33;
-const DEFAULT_DISTANCE = 278;
+const FOV = 32;
+const DEFAULT_DISTANCE = 390;
 const MIN_DISTANCE = 50;
-const MAX_DISTANCE = 365;
+const MAX_DISTANCE = 520;
 const MAX_SUPPORTED_ASPECT = 2.75;
-const SURFACE_GUARD_BAND = 30;
+const SURFACE_GUARD_BAND = 34;
 const MIN_STRATEGIC_PAN = 14;
 const VIEW_KEEP_FRACTION = 0.72;
 
@@ -23,7 +23,7 @@ interface GroundHalfExtents {
 }
 
 export class WorldCamera {
-  readonly camera = new THREE.PerspectiveCamera(FOV, 16 / 9, 0.25, 1100);
+  readonly camera = new THREE.PerspectiveCamera(FOV, 16 / 9, 0.25, 1400);
 
   private readonly target = new THREE.Vector3(0, 0.35, 0);
   private readonly raycaster = new THREE.Raycaster();
@@ -35,7 +35,7 @@ export class WorldCamera {
 
   static requiredSurfaceCoverage(): SurfaceCoverage {
     const target = new THREE.Vector3(0, SEA_LEVEL, 0);
-    const probe = new THREE.PerspectiveCamera(FOV, MAX_SUPPORTED_ASPECT, 0.25, 1100);
+    const probe = new THREE.PerspectiveCamera(FOV, MAX_SUPPORTED_ASPECT, 0.25, 1400);
     probe.position.copy(target).addScaledVector(CAMERA_DIRECTION, MAX_DISTANCE);
     probe.lookAt(target);
     probe.updateProjectionMatrix();
