@@ -14,23 +14,27 @@ import {
 const OCEAN_COVERAGE = WorldCamera.requiredSurfaceCoverage();
 const OCEAN_WIDTH = OCEAN_COVERAGE.width;
 const OCEAN_DEPTH = OCEAN_COVERAGE.depth;
-const OCEAN_SEGMENTS_X = 192;
-const OCEAN_SEGMENTS_Z = 144;
+const OCEAN_SEGMENTS_X = 224;
+const OCEAN_SEGMENTS_Z = 168;
+const SUN_DIRECTION = new THREE.Vector3(-0.56, 0.72, 0.4).normalize();
 
 const COLORS = {
-  deepWater: new THREE.Color(0x274c59),
-  offshoreWater: new THREE.Color(0x3b6972),
-  shallowWater: new THREE.Color(0x6d918a),
-  wetSand: new THREE.Color(0x8f876b),
-  dryCoast: new THREE.Color(0xa18f68),
-  neutralGrass: new THREE.Color(0x697651),
-  dryGrass: new THREE.Color(0x857650),
-  fertileGrass: new THREE.Color(0x4f7447),
-  wetland: new THREE.Color(0x4b6851),
-  highland: new THREE.Color(0x626457),
-  roughGround: new THREE.Color(0x6b655a),
+  deepWater: new THREE.Color(0x203f4b),
+  offshoreWater: new THREE.Color(0x37636d),
+  shallowWater: new THREE.Color(0x75988e),
+  wetSand: new THREE.Color(0x8a8268),
+  dryCoast: new THREE.Color(0xa6926a),
+  neutralGrass: new THREE.Color(0x6b7752),
+  meadow: new THREE.Color(0x74835a),
+  dryGrass: new THREE.Color(0x8b7950),
+  fertileGrass: new THREE.Color(0x4d7045),
+  deepFertile: new THREE.Color(0x3f6440),
+  wetland: new THREE.Color(0x48614d),
+  earth: new THREE.Color(0x74684f),
+  highland: new THREE.Color(0x66675a),
+  roughGround: new THREE.Color(0x6b6458),
   rock: new THREE.Color(0x77716a),
-  exposedRock: new THREE.Color(0x8b847a),
+  exposedRock: new THREE.Color(0x928a7d),
 };
 
 export function addTerrain(scene: THREE.Scene): void {
@@ -52,11 +56,17 @@ function createOcean(): THREE.Mesh {
     const x = positions.getX(i);
     const z = -positions.getY(i);
     const signal = islandSignal(x, z);
-    const shallow = THREE.MathUtils.smoothstep(signal, -0.18, 0.012);
-    const nearShelf = THREE.MathUtils.smoothstep(signal, -0.4, -0.06);
+    const shallow = THREE.MathUtils.smoothstep(signal, -0.2, 0.012);
+    const nearShelf = THREE.MathUtils.smoothstep(signal, -0.48, -0.055);
 
-    const color = COLORS.deepWater.clone().lerp(COLORS.offshoreWater, nearShelf * 0.76);
-    color.lerp(COLORS.shallowWater, shallow * 0.82);
+    const color = COLORS.deepWater.clone().lerp(COLORS.offshoreWater, nearShelf * 0.8);
+    color.lerp(COLORS.shallowWater, shallow * 0.84);
+
+    const broadWater = (
+      Math.sin(x * 0.018 + z * 0.006) +
+      Math.sin(z * 0.025 - x * 0.004) * 0.55
+    ) / 1.55;
+    color.offsetHSL(0, broadWater * 0.009, broadWater * 0.018);
 
     colors[i * 3] = color.r;
     colors[i * 3 + 1] = color.g;
@@ -71,8 +81,8 @@ function createOcean(): THREE.Mesh {
     geometry,
     new THREE.MeshStandardMaterial({
       vertexColors: true,
-      roughness: 0.66,
-      metalness: 0.005,
+      roughness: 0.58,
+      metalness: 0.008,
       dithering: true,
     }),
   );
@@ -89,63 +99,106 @@ function createLand(): THREE.Mesh {
     TERRAIN_SEGMENTS_Z,
   );
   const positions = geometry.attributes.position as THREE.BufferAttribute;
-  const colors = new Float32Array(positions.count * 3);
+  const samples: TerrainSample[] = new Array(positions.count);
 
   for (let i = 0; i < positions.count; i += 1) {
     const x = positions.getX(i);
     const z = -positions.getY(i);
     const sample = terrainSampleAt(x, z);
+    samples[i] = sample;
     positions.setZ(i, sample.height);
+  }
 
-    const color = terrainColor(sample);
+  geometry.computeVertexNormals();
+  geometry.rotateX(-Math.PI / 2);
+
+  const normals = geometry.attributes.normal as THREE.BufferAttribute;
+  const colors = new Float32Array(positions.count * 3);
+  const normal = new THREE.Vector3();
+
+  for (let i = 0; i < positions.count; i += 1) {
+    const sample = samples[i];
+    if (!sample) continue;
+
+    const x = positions.getX(i);
+    const z = positions.getZ(i);
+    normal.set(normals.getX(i), normals.getY(i), normals.getZ(i)).normalize();
+
+    const color = terrainColor(x, z, sample, normal);
     colors[i * 3] = color.r;
     colors[i * 3 + 1] = color.g;
     colors[i * 3 + 2] = color.b;
   }
 
   geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  geometry.computeVertexNormals();
-  geometry.rotateX(-Math.PI / 2);
   geometry.computeBoundingSphere();
 
-  return new THREE.Mesh(
+  const mesh = new THREE.Mesh(
     geometry,
     new THREE.MeshStandardMaterial({
       vertexColors: true,
-      roughness: 0.92,
+      roughness: 0.96,
       metalness: 0,
       dithering: true,
     }),
   );
+  mesh.receiveShadow = true;
+  return mesh;
 }
 
-function terrainColor(sample: TerrainSample): THREE.Color {
+function terrainColor(
+  x: number,
+  z: number,
+  sample: TerrainSample,
+  normal: THREE.Vector3,
+): THREE.Color {
   if (sample.height <= SEA_LEVEL || sample.biome === 'sea') {
     return COLORS.deepWater.clone().lerp(COLORS.shallowWater, sample.coastInfluence * 0.72);
   }
 
-  const lowland = 1 - THREE.MathUtils.smoothstep(sample.height, 0.78, 2.7);
-  const highland = THREE.MathUtils.smoothstep(sample.height, 1.15, 3.95);
-  const summit = THREE.MathUtils.smoothstep(sample.height, 3.35, 6.1);
-  const exposedRock = THREE.MathUtils.smoothstep(sample.roughness, 0.48, 0.88) * highland;
+  const lowland = 1 - THREE.MathUtils.smoothstep(sample.height, 0.72, 2.65);
+  const highland = THREE.MathUtils.smoothstep(sample.height, 1.1, 4.0);
+  const summit = THREE.MathUtils.smoothstep(sample.height, 3.25, 6.0);
+  const inclination = 1 - THREE.MathUtils.clamp(normal.y, 0, 1);
+  const steep = THREE.MathUtils.smoothstep(inclination, 0.035, 0.28);
+  const rockySlope = THREE.MathUtils.clamp(steep * 0.8 + sample.roughness * highland * 0.6, 0, 1);
   const dry = (1 - sample.moisture) * lowland;
   const wet = sample.moisture * lowland;
+  const richValley = sample.fertility * sample.moisture * lowland;
 
   const color = COLORS.neutralGrass.clone();
-  color.lerp(COLORS.dryGrass, dry * 0.82);
-  color.lerp(COLORS.fertileGrass, sample.fertility * (0.7 + lowland * 0.2));
-  color.lerp(COLORS.wetland, wet * sample.fertility * 0.3);
-  color.lerp(COLORS.highland, highland * 0.74);
-  color.lerp(COLORS.roughGround, sample.roughness * 0.28);
-  color.lerp(COLORS.rock, exposedRock * 0.84);
-  color.lerp(COLORS.exposedRock, summit * 0.66);
+  color.lerp(COLORS.meadow, sample.moisture * lowland * 0.22);
+  color.lerp(COLORS.dryGrass, dry * 0.84);
+  color.lerp(COLORS.fertileGrass, sample.fertility * (0.62 + lowland * 0.22));
+  color.lerp(COLORS.deepFertile, richValley * 0.25);
+  color.lerp(COLORS.wetland, wet * sample.fertility * 0.28);
+  color.lerp(COLORS.highland, highland * 0.68);
+  color.lerp(COLORS.earth, steep * (1 - highland) * 0.32);
+  color.lerp(COLORS.roughGround, sample.roughness * 0.2);
+  color.lerp(COLORS.rock, rockySlope * 0.78);
+  color.lerp(COLORS.exposedRock, summit * 0.62 + steep * summit * 0.2);
 
-  const coastHeightMask = 1 - THREE.MathUtils.smoothstep(sample.height, 0.03, 0.48);
+  const coastHeightMask = 1 - THREE.MathUtils.smoothstep(sample.height, 0.025, 0.5);
   const coastWeight = sample.coastInfluence * coastHeightMask;
   if (coastWeight > 0.001) {
-    const coastColor = COLORS.wetSand.clone().lerp(COLORS.dryCoast, (1 - sample.moisture) * 0.78);
-    color.lerp(coastColor, coastWeight * 0.84);
+    const coastColor = COLORS.wetSand.clone().lerp(COLORS.dryCoast, (1 - sample.moisture) * 0.76);
+    color.lerp(coastColor, coastWeight * 0.86);
   }
+
+  const regionalVariation = (
+    Math.sin(x * 0.014 + z * 0.004) +
+    Math.sin(z * 0.021 - x * 0.003) * 0.62 +
+    Math.sin((x + z) * 0.008) * 0.38
+  ) / 2;
+  color.offsetHSL(
+    regionalVariation * 0.004,
+    regionalVariation * 0.015,
+    regionalVariation * 0.022,
+  );
+
+  const sunFacing = THREE.MathUtils.clamp((normal.dot(SUN_DIRECTION) + 0.18) / 1.18, 0, 1);
+  const hillshade = 0.82 + sunFacing * 0.22 + normal.y * 0.045;
+  color.multiplyScalar(hillshade);
 
   return color;
 }
