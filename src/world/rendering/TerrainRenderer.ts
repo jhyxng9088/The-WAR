@@ -12,14 +12,14 @@ import {
 } from '../WorldField';
 
 const COLORS = {
-  deepWater: new THREE.Color(0x456f7f),
-  shallowWater: new THREE.Color(0x6f9ca0),
-  wetSand: new THREE.Color(0xbbaa7b),
-  dryGrass: new THREE.Color(0x789360),
-  fertileGrass: new THREE.Color(0x8daf6d),
-  forestFloor: new THREE.Color(0x536f52),
-  highland: new THREE.Color(0x737765),
-  rock: new THREE.Color(0x777a72),
+  deepWater: new THREE.Color(0x315f70),
+  shallowWater: new THREE.Color(0x4f8790),
+  wetSand: new THREE.Color(0xa89c70),
+  dryGrass: new THREE.Color(0x6f8754),
+  fertileGrass: new THREE.Color(0x7fa45b),
+  forestFloor: new THREE.Color(0x465f43),
+  highland: new THREE.Color(0x676b58),
+  rock: new THREE.Color(0x73736c),
 };
 
 export function addTerrain(scene: THREE.Scene): void {
@@ -29,15 +29,15 @@ export function addTerrain(scene: THREE.Scene): void {
 
 function createOcean(): THREE.Mesh {
   const mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(120, 120, 1, 1),
+    new THREE.PlaneGeometry(180, 180, 1, 1),
     new THREE.MeshStandardMaterial({
-      color: 0x4f8292,
-      roughness: 0.34,
-      metalness: 0.03,
+      color: 0x376f80,
+      roughness: 0.42,
+      metalness: 0.025,
     }),
   );
   mesh.rotation.x = -Math.PI / 2;
-  mesh.position.y = -0.19;
+  mesh.position.y = -0.2;
   mesh.renderOrder = -2;
   return mesh;
 }
@@ -74,7 +74,7 @@ function createLand(): THREE.Mesh {
     geometry,
     new THREE.MeshStandardMaterial({
       vertexColors: true,
-      roughness: 0.96,
+      roughness: 0.985,
       metalness: 0,
     }),
   );
@@ -83,27 +83,28 @@ function createLand(): THREE.Mesh {
 function terrainColor(x: number, z: number, height: number): THREE.Color {
   let color: THREE.Color;
 
-  if (height < -0.28) {
+  if (height < -0.3) {
     color = COLORS.deepWater.clone();
-  } else if (height < 0.02) {
-    const t = THREE.MathUtils.smoothstep(height, -0.28, 0.02);
+  } else if (height < 0.025) {
+    const t = THREE.MathUtils.smoothstep(height, -0.3, 0.025);
     color = COLORS.shallowWater.clone().lerp(COLORS.wetSand, t);
   } else if (height < 0.2) {
-    const t = THREE.MathUtils.smoothstep(height, 0.02, 0.2);
+    const t = THREE.MathUtils.smoothstep(height, 0.025, 0.2);
     color = COLORS.wetSand.clone().lerp(COLORS.dryGrass, t);
   } else {
     const fertility = fertilityAt(x, z);
     const forest = forestDensityAt(x, z);
     const mountain = mountainStrengthAt(x, z);
-    const highland = THREE.MathUtils.smoothstep(height, 0.95, 2.3);
+    const highland = THREE.MathUtils.smoothstep(height, 1.05, 2.7);
 
-    color = COLORS.dryGrass.clone().lerp(COLORS.fertileGrass, fertility * 0.72);
-    color.lerp(COLORS.forestFloor, forest * 0.28);
-    color.lerp(COLORS.highland, highland * 0.46);
-    color.lerp(COLORS.rock, mountain * highland * 0.52);
+    color = COLORS.dryGrass.clone().lerp(COLORS.fertileGrass, fertility * 0.8);
+    color.lerp(COLORS.forestFloor, forest * 0.3);
+    color.lerp(COLORS.highland, highland * 0.52);
+    color.lerp(COLORS.rock, mountain * highland * 0.62);
   }
 
-  const variation = (deterministic01(x * 3.7, z * 3.7, 19) - 0.5) * 0.045;
-  color.offsetHSL(0, variation * 0.3, variation);
+  const broadVariation = (deterministic01(x * 0.72, z * 0.72, 13) - 0.5) * 0.055;
+  const fineVariation = (deterministic01(x * 3.2, z * 3.2, 19) - 0.5) * 0.032;
+  color.offsetHSL(0, broadVariation * 0.24, broadVariation + fineVariation);
   return color;
 }
