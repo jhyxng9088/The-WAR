@@ -16,11 +16,11 @@ export function createRibbonGeometry(samples: readonly RibbonSample[]): THREE.Bu
   let travelled = 0;
 
   for (let i = 0; i < samples.length; i += 1) {
-    const current = samples[i];
-    const previous = samples[Math.max(0, i - 1)].position;
-    const next = samples[Math.min(samples.length - 1, i + 1)].position;
+    const current = samples[i]!;
+    const previous = samples[Math.max(0, i - 1)]!.position;
+    const next = samples[Math.min(samples.length - 1, i + 1)]!.position;
 
-    if (i > 0) travelled += current.position.distanceTo(samples[i - 1].position);
+    if (i > 0) travelled += current.position.distanceTo(samples[i - 1]!.position);
 
     const tangent = next.clone().sub(previous);
     tangent.y = 0;
