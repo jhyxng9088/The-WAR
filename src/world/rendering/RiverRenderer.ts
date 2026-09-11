@@ -2,10 +2,11 @@ import * as THREE from 'three';
 import { createRibbonGeometry, type RibbonSample } from '../../rendering/geometry/createRibbonGeometry';
 import { RIVER_PATHS, terrainHeight } from '../WorldField';
 
-const RIVER_SEGMENTS = 144;
+const RIVER_SEGMENTS = 192;
+const WIDTH_SCALES = [1.18, 0.62, 0.76, 0.72, 0.72, 0.66] as const;
 
 export function addRiver(scene: THREE.Scene): void {
-  RIVER_PATHS.forEach((points, index) => addRiverPath(scene, points, index === 0 ? 1 : 0.68));
+  RIVER_PATHS.forEach((points, index) => addRiverPath(scene, points, WIDTH_SCALES[index] ?? 0.7));
 }
 
 function addRiverPath(scene: THREE.Scene, points: readonly (readonly [number, number])[], widthScale: number): void {
@@ -13,7 +14,7 @@ function addRiverPath(scene: THREE.Scene, points: readonly (readonly [number, nu
     points.map(([x, z]) => new THREE.Vector3(x, 0, z)),
     false,
     'centripetal',
-    0.45,
+    0.5,
   );
 
   const banks: RibbonSample[] = [];
@@ -23,27 +24,27 @@ function addRiverPath(scene: THREE.Scene, points: readonly (readonly [number, nu
   for (let i = 0; i <= RIVER_SEGMENTS; i += 1) {
     const t = i / RIVER_SEGMENTS;
     const point = path.getPoint(t);
-    const width = THREE.MathUtils.lerp(0.4, 0.72, t) * widthScale;
+    const width = THREE.MathUtils.lerp(0.26, 0.82, Math.pow(t, 0.72)) * widthScale;
     const y = terrainHeight(point.x, point.z);
 
     banks.push({
-      position: new THREE.Vector3(point.x, y + 0.014, point.z),
-      width: width + 0.2 * widthScale,
+      position: new THREE.Vector3(point.x, y + 0.012, point.z),
+      width: width + 0.12 * widthScale,
     });
     water.push({
-      position: new THREE.Vector3(point.x, y + 0.032, point.z),
+      position: new THREE.Vector3(point.x, y + 0.026, point.z),
       width,
     });
     glint.push({
-      position: new THREE.Vector3(point.x, y + 0.038, point.z),
-      width: width * 0.18,
+      position: new THREE.Vector3(point.x, y + 0.031, point.z),
+      width: width * 0.1,
     });
   }
 
   const bankMesh = new THREE.Mesh(
     createRibbonGeometry(banks),
     new THREE.MeshStandardMaterial({
-      color: 0x596b55,
+      color: 0x59624f,
       roughness: 1,
       metalness: 0,
     }),
@@ -54,11 +55,9 @@ function addRiverPath(scene: THREE.Scene, points: readonly (readonly [number, nu
   const waterMesh = new THREE.Mesh(
     createRibbonGeometry(water),
     new THREE.MeshStandardMaterial({
-      color: 0x3d91b0,
-      roughness: 0.24,
-      metalness: 0.04,
-      emissive: 0x08212b,
-      emissiveIntensity: 0.18,
+      color: 0x417f92,
+      roughness: 0.34,
+      metalness: 0.015,
     }),
   );
   waterMesh.renderOrder = 2;
@@ -67,9 +66,9 @@ function addRiverPath(scene: THREE.Scene, points: readonly (readonly [number, nu
   const highlight = new THREE.Mesh(
     createRibbonGeometry(glint),
     new THREE.MeshBasicMaterial({
-      color: 0xb9e4ea,
+      color: 0xc0dde0,
       transparent: true,
-      opacity: 0.2,
+      opacity: 0.1,
       depthWrite: false,
     }),
   );
