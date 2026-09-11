@@ -3,8 +3,9 @@ import { WorldCamera } from '../camera/WorldCamera';
 
 type PointerState = { x: number; y: number };
 
-const PINCH_RESPONSE = 1.05;
-const WHEEL_RESPONSE = 0.00135;
+const PAN_RESPONSE = 1.16;
+const PINCH_RESPONSE = 1.08;
+const WHEEL_RESPONSE = 0.00145;
 
 export class WorldInput {
   private readonly pointers = new Map<number, PointerState>();
@@ -43,7 +44,7 @@ export class WorldInput {
     if (this.pointers.size === 1) {
       const before = this.camera.groundPoint(previous.x, previous.y, rect);
       const after = this.camera.groundPoint(event.clientX, event.clientY, rect);
-      if (before && after) this.camera.panGround(before.sub(after));
+      if (before && after) this.camera.panGround(before.sub(after).multiplyScalar(PAN_RESPONSE));
       this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       return;
     }
@@ -56,7 +57,7 @@ export class WorldInput {
       if (oldCenter && newCenter) {
         const beforePan = this.camera.groundPoint(oldCenter.x, oldCenter.y, rect);
         const afterPan = this.camera.groundPoint(newCenter.x, newCenter.y, rect);
-        if (beforePan && afterPan) this.camera.panGround(beforePan.sub(afterPan));
+        if (beforePan && afterPan) this.camera.panGround(beforePan.sub(afterPan).multiplyScalar(PAN_RESPONSE));
       }
 
       const distance = this.getPinchDistance();
