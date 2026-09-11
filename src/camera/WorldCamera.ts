@@ -1,16 +1,15 @@
 import * as THREE from 'three';
 import { SEA_LEVEL, WORLD_HALF_DEPTH, WORLD_HALF_WIDTH } from '../world/WorldField';
 
-const CAMERA_OFFSET = new THREE.Vector3(15.5, 29, 19.5);
+const CAMERA_DIRECTION = new THREE.Vector3(0.43, 0.78, 0.46).normalize();
 const GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-const VIEW_HEIGHT = 19.5;
-const MIN_ZOOM = 0.18;
-const MAX_ZOOM = 4.4;
+const FOV = 34;
+const DEFAULT_DISTANCE = 190;
+const MIN_DISTANCE = 48;
+const MAX_DISTANCE = 286;
 const MAX_SUPPORTED_ASPECT = 2.75;
-const SURFACE_GUARD_BAND = 20;
-const LAND_VIEW_HALF_WIDTH = WORLD_HALF_WIDTH - 11;
-const LAND_VIEW_HALF_DEPTH = WORLD_HALF_DEPTH - 9;
-const WORLD_EDGE_GUARD = 3;
+const SURFACE_GUARD_BAND = 28;
+const WORLD_EDGE_GUARD = 5;
 
 export interface SurfaceCoverage {
   width: number;
@@ -23,33 +22,21 @@ interface GroundHalfExtents {
 }
 
 export class WorldCamera {
-  readonly camera = new THREE.OrthographicCamera(-16, 16, 10, -10, 0.1, 360);
+  readonly camera = new THREE.PerspectiveCamera(FOV, 16 / 9, 0.25, 920);
 
-  private readonly target = new THREE.Vector3(0, 0.8, 1.4);
+  private readonly target = new THREE.Vector3(0, 0.35, 3);
   private readonly raycaster = new THREE.Raycaster();
+  private distance = DEFAULT_DISTANCE;
 
   constructor() {
-    this.camera.position.copy(this.target).add(CAMERA_OFFSET);
-    this.camera.lookAt(this.target);
-    this.camera.zoom = 1;
-    this.camera.updateMatrixWorld(true);
+    this.syncPosition();
   }
 
   static requiredSurfaceCoverage(): SurfaceCoverage {
-    const target = new THREE.Vector3(0, 0.8, 1.4);
-    const halfHeight = VIEW_HEIGHT / 2;
-    const halfWidth = halfHeight * MAX_SUPPORTED_ASPECT;
-    const probe = new THREE.OrthographicCamera(
-      -halfWidth,
-      halfWidth,
-      halfHeight,
-      -halfHeight,
-      0.1,
-      360,
-    );
-    probe.position.copy(target).add(CAMERA_OFFSET);
+    const target = new THREE.Vector3(0, SEA_LEVEL, 3);
+    const probe = new THREE.PerspectiveCamera(FOV, MAX_SUPPORTED_ASPECT, 0.25, 920);
+    probe.position.copy(target).addScaledVector(CAMERA_DIRECTION, MAX_DISTANCE);
     probe.lookAt(target);
-    probe.zoom = MIN_ZOOM;
     probe.updateProjectionMatrix();
     probe.updateMatrixWorld(true);
 
@@ -75,14 +62,7 @@ export class WorldCamera {
   }
 
   resize(width: number, height: number): void {
-    const aspect = width / height;
-    const halfHeight = VIEW_HEIGHT / 2;
-    const halfWidth = halfHeight * aspect;
-
-    this.camera.left = -halfWidth;
-    this.camera.right = halfWidth;
-    this.camera.top = halfHeight;
-    this.camera.bottom = -halfHeight;
+    this.camera.aspect = width / Math.max(1, height);
     this.camera.updateProjectionMatrix();
     this.clampTargetToVisibleWorld();
   }
@@ -94,12 +74,14 @@ export class WorldCamera {
   }
 
   zoomBy(scale: number): void {
-    this.camera.zoom = THREE.MathUtils.clamp(this.camera.zoom * scale, MIN_ZOOM, MAX_ZOOM);
-    this.camera.updateProjectionMatrix();
+    if (!Number.isFinite(scale) || scale <= 0) return;
+    this.distance = THREE.MathUtils.clamp(this.distance / scale, MIN_DISTANCE, MAX_DISTANCE);
+    this.syncPosition();
     this.clampTargetToVisibleWorld();
   }
 
   groundPoint(clientX: number, clientY: number, rect: DOMRect): THREE.Vector3 | null {
+    if (rect.width <= 0 || rect.height <= 0) return null;
     const ndc = new THREE.Vector2(
       ((clientX - rect.left) / rect.width) * 2 - 1,
       -((clientY - rect.top) / rect.height) * 2 + 1,
@@ -113,8 +95,8 @@ export class WorldCamera {
   private clampTargetToVisibleWorld(): void {
     this.syncPosition();
     const extents = this.currentGroundHalfExtents();
-    const maxTargetX = Math.max(0, LAND_VIEW_HALF_WIDTH - extents.x - WORLD_EDGE_GUARD);
-    const maxTargetZ = Math.max(0, LAND_VIEW_HALF_DEPTH - extents.z - WORLD_EDGE_GUARD);
+    const maxTargetX = Math.max(0, WORLD_HALF_WIDTH - extents.x - WORLD_EDGE_GUARD);
+    const maxTargetZ = Math.max(0, WORLD_HALF_DEPTH - extents.z - WORLD_EDGE_GUARD);
 
     const nextX = THREE.MathUtils.clamp(this.target.x, -maxTargetX, maxTargetX);
     const nextZ = THREE.MathUtils.clamp(this.target.z, -maxTargetZ, maxTargetZ);
@@ -143,7 +125,7 @@ export class WorldCamera {
   }
 
   private syncPosition(): void {
-    this.camera.position.copy(this.target).add(CAMERA_OFFSET);
+    this.camera.position.copy(this.target).addScaledVector(CAMERA_DIRECTION, this.distance);
     this.camera.lookAt(this.target);
     this.camera.updateMatrixWorld(true);
   }
