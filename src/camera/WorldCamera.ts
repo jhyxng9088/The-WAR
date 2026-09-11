@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { SLICE_HALF_DEPTH, SLICE_HALF_WIDTH } from '../world/vertical-slice/VerticalSliceAssets';
 
-const CAMERA_DIRECTION = new THREE.Vector3(0.28, 0.88, 0.38).normalize();
+const CAMERA_DIRECTION = new THREE.Vector3(0.34, 0.82, 0.46).normalize();
 const GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-const FOV = 36;
-const DEFAULT_DISTANCE = 124;
-const MIN_DISTANCE = 48;
-const MAX_DISTANCE = 182;
+const FOV = 34;
+const DEFAULT_DISTANCE = 148;
+const MIN_DISTANCE = 55;
+const MAX_DISTANCE = 205;
 const EDGE_GUARD = 3;
 
 export interface SurfaceCoverage {
@@ -20,9 +20,9 @@ interface GroundHalfExtents {
 }
 
 export class WorldCamera {
-  readonly camera = new THREE.PerspectiveCamera(FOV, 16 / 9, 0.2, 620);
+  readonly camera = new THREE.PerspectiveCamera(FOV, 16 / 9, 0.2, 680);
 
-  private readonly target = new THREE.Vector3(0, 1.8, -4);
+  private readonly target = new THREE.Vector3(0, 1.5, -5);
   private readonly raycaster = new THREE.Raycaster();
   private distance = DEFAULT_DISTANCE;
 
@@ -32,8 +32,8 @@ export class WorldCamera {
 
   static requiredSurfaceCoverage(): SurfaceCoverage {
     return {
-      width: (SLICE_HALF_WIDTH + 90) * 2,
-      depth: (SLICE_HALF_DEPTH + 90) * 2,
+      width: (SLICE_HALF_WIDTH + 108) * 2,
+      depth: (SLICE_HALF_DEPTH + 108) * 2,
     };
   }
 
