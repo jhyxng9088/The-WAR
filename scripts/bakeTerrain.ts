@@ -13,7 +13,7 @@ import {
   terrainSampleAt,
 } from '../src/world/WorldField.ts';
 
-const WIDTH = 896;
+const WIDTH = 704;
 const HEIGHT = Math.round(WIDTH * WORLD_DEPTH / WORLD_WIDTH);
 const PIXELS = WIDTH * HEIGHT;
 const DX = WORLD_WIDTH / (WIDTH - 1);
@@ -224,18 +224,11 @@ function pngChunk(type: string, data: Buffer): Buffer {
   return out;
 }
 
-const CRC_TABLE = (() => {
-  const table = new Uint32Array(256);
-  for (let n = 0; n < 256; n += 1) {
-    let c = n;
-    for (let k = 0; k < 8; k += 1) c = (c & 1) ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    table[n] = c >>> 0;
-  }
-  return table;
-})();
-
 function crc32(data: Buffer): number {
   let c = 0xffffffff;
-  for (const byteValue of data) c = (CRC_TABLE[(c ^ byteValue) & 0xff] ?? 0) ^ (c >>> 8);
+  for (const byteValue of data) {
+    c ^= byteValue;
+    for (let bit = 0; bit < 8; bit += 1) c = (c & 1) ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  }
   return (c ^ 0xffffffff) >>> 0;
 }
