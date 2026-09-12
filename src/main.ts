@@ -7,5 +7,14 @@ if (!canvas) {
   throw new Error('THE WAR canvas was not found.');
 }
 
-const game = new Game(canvas);
-game.start();
+const isTerrainEditor = window.location.pathname.includes('/terrain-editor');
+
+if (isTerrainEditor) {
+  document.body.classList.add('terrain-editor-active');
+  const { TerrainEditor } = await import('./terrain-editor/TerrainEditor');
+  const editor = new TerrainEditor(canvas);
+  editor.start();
+} else {
+  const game = new Game(canvas);
+  game.start();
+}
