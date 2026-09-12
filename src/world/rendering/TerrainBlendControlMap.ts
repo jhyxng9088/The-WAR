@@ -17,7 +17,9 @@ export interface TerrainBlendControlMaps {
   riverDistanceMax: number;
 }
 
-const DEFAULT_CONTROL_SIZE = 256;
+// 512² keeps biome/coast transitions fine enough for the strategy camera without
+// the 4x startup/memory cost of 1024² on iPad-class devices.
+const DEFAULT_CONTROL_SIZE = 512;
 const RIVER_DISTANCE_MAX = 48;
 const cache = new Map<number, TerrainBlendControlMaps>();
 
