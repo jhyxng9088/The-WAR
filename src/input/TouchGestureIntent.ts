@@ -15,7 +15,7 @@ export interface TouchGestureDelta {
 }
 
 export const TOUCH_ZOOM_RESPONSE = 1.0;
-export const TOUCH_ROTATE_RESPONSE = 1.0;
+export const TOUCH_ROTATE_RESPONSE = -1.0;
 export const TOUCH_TILT_RESPONSE = 0.0019;
 
 const ZOOM_LOCK_THRESHOLD = 0.038;
