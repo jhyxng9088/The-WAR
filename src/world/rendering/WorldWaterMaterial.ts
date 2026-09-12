@@ -11,11 +11,11 @@ interface WaterTimeUniform {
   value: number;
 }
 
-const DEEP_WATER = new THREE.Color(0x173a43);
-const OFFSHORE_WATER = new THREE.Color(0x27535a);
-const SHALLOW_WATER = new THREE.Color(0x4e7770);
-const SHORE_WATER = new THREE.Color(0x688b7d);
-const REFLECTION_TINT = new THREE.Color(0x8ba7a8);
+const DEEP_WATER = new THREE.Color(0x1c4149);
+const OFFSHORE_WATER = new THREE.Color(0x315b5e);
+const SHALLOW_WATER = new THREE.Color(0x587a70);
+const SHORE_WATER = new THREE.Color(0x789387);
+const REFLECTION_TINT = new THREE.Color(0x9ab0ae);
 
 export function createWorldWaterMaterial(
   options: WorldWaterMaterialOptions = {},
@@ -26,8 +26,11 @@ export function createWorldWaterMaterial(
 
   const material = new THREE.MeshStandardMaterial({
     color: 0xffffff,
-    roughness: options.roughness ?? 0.36,
+    roughness: options.roughness ?? 0.48,
     metalness: 0,
+    transparent: true,
+    opacity: 1,
+    depthWrite: false,
     dithering: true,
   });
 
@@ -35,6 +38,7 @@ export function createWorldWaterMaterial(
 
   material.onBeforeCompile = (shader) => {
     shader.uniforms.waterRegionalControl = { value: controls.regional };
+    shader.uniforms.waterFeatureControl = { value: controls.features };
     shader.uniforms.waterWorldWidth = { value: WORLD_WIDTH };
     shader.uniforms.waterWorldDepth = { value: WORLD_DEPTH };
     shader.uniforms.waterTime = timeUniform;
@@ -58,6 +62,7 @@ export function createWorldWaterMaterial(
       '#include <common>',
       `#include <common>
 uniform sampler2D waterRegionalControl;
+uniform sampler2D waterFeatureControl;
 uniform float waterWorldWidth;
 uniform float waterWorldDepth;
 uniform float waterTime;
@@ -100,9 +105,31 @@ vec2 waterControlUv() {
   );
 }
 
+vec4 waterRegionalData() {
+  return texture2D( waterRegionalControl, waterControlUv() );
+}
+
+vec4 waterFeatureData() {
+  return texture2D( waterFeatureControl, waterControlUv() );
+}
+
+float waterDepthNormalized() {
+  float inside = waterInsideWorld();
+  float encodedDepth = waterFeatureData().a;
+  return mix( 1.0, encodedDepth, inside );
+}
+
 float waterCoastInfluence() {
   float inside = waterInsideWorld();
-  return texture2D( waterRegionalControl, waterControlUv() ).a * inside;
+  return waterRegionalData().a * inside;
+}
+
+float waterSurfaceMask() {
+  float inside = waterInsideWorld();
+  float landMask = waterFeatureData().b * inside;
+  // The interpolated control mask gives the shoreline a sub-cell fade instead of
+  // exposing the hard intersection between an opaque water plane and the terrain.
+  return 1.0 - smoothstep( 0.40, 0.60, landMask );
 }
 
 vec3 waterWaveNormalWorld( vec2 worldXZ, float time ) {
@@ -110,14 +137,14 @@ vec3 waterWaveNormalWorld( vec2 worldXZ, float time ) {
   vec2 dirB = normalize( vec2( -0.38, 0.93 ) );
   vec2 dirC = normalize( vec2( 0.26, 0.97 ) );
 
-  float phaseA = dot( worldXZ, dirA ) * 0.19 + time * 0.46;
-  float phaseB = dot( worldXZ, dirB ) * 0.31 - time * 0.31;
-  float phaseC = dot( worldXZ, dirC ) * 0.53 + time * 0.19;
+  float phaseA = dot( worldXZ, dirA ) * 0.20 + time * 0.43;
+  float phaseB = dot( worldXZ, dirB ) * 0.34 - time * 0.29;
+  float phaseC = dot( worldXZ, dirC ) * 0.58 + time * 0.17;
 
   vec2 gradient =
-    dirA * cos( phaseA ) * 0.028 +
-    dirB * cos( phaseB ) * 0.018 +
-    dirC * cos( phaseC ) * 0.010;
+    dirA * cos( phaseA ) * 0.040 +
+    dirB * cos( phaseB ) * 0.025 +
+    dirC * cos( phaseC ) * 0.014;
 
   return normalize( vec3( -gradient.x, 1.0, -gradient.y ) );
 }`,
@@ -125,24 +152,44 @@ vec3 waterWaveNormalWorld( vec2 worldXZ, float time ) {
 
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <map_fragment>',
-      `float waterCoast = waterCoastInfluence();
-float waterShallow = smoothstep( 0.08, 0.84, waterCoast );
-float waterShoreBand = smoothstep( 0.58, 0.96, waterCoast );
+      `float waterDepth = waterDepthNormalized();
+float waterCoast = waterCoastInfluence();
+float waterMask = waterSurfaceMask();
 
-float waterMacroA = waterNoise( vWaterWorldPosition.xz * 0.012 + vec2( waterTime * 0.025, -waterTime * 0.018 ) );
-float waterMacroB = waterNoise( vWaterWorldPosition.xz * 0.031 + vec2( -waterTime * 0.017, waterTime * 0.021 ) );
-float waterMacro = waterMacroA * 0.68 + waterMacroB * 0.32;
+float depthBlend = smoothstep( 0.045, 0.78, waterDepth );
+float offshoreBlend = smoothstep( 0.16, 0.52, waterDepth );
+float veryShallow = 1.0 - smoothstep( 0.025, 0.17, waterDepth );
 
-vec3 waterAlbedo = mix( waterDeepColor, waterOffshoreColor, 0.34 + waterMacro * 0.18 );
-waterAlbedo = mix( waterAlbedo, waterShallowColor, waterShallow * 0.84 );
-waterAlbedo = mix( waterAlbedo, waterShoreColor, waterShoreBand * 0.22 );
+vec3 waterAlbedo = mix( waterShallowColor, waterDeepColor, depthBlend );
+waterAlbedo = mix( waterAlbedo, waterOffshoreColor, offshoreBlend * ( 1.0 - depthBlend ) * 0.34 );
+waterAlbedo = mix( waterAlbedo, waterShoreColor, veryShallow * 0.12 );
+
+// Keep large water bodies visually calm. The previous low-frequency color noise
+// produced the obvious dark blob visible in the lake; only tiny local variation remains.
+float waterDetailA = waterNoise(
+  vWaterWorldPosition.xz * 0.090 + vec2( waterTime * 0.018, -waterTime * 0.013 )
+);
+float waterDetailB = waterNoise(
+  vWaterWorldPosition.xz * 0.170 + vec2( -waterTime * 0.012, waterTime * 0.016 )
+);
+float waterDetail = waterDetailA * 0.62 + waterDetailB * 0.38;
+waterAlbedo *= mix( 0.985, 1.018, waterDetail );
 
 vec3 waterNormalWorldForColor = waterWaveNormalWorld( vWaterWorldPosition.xz, waterTime );
 vec3 waterViewDirection = normalize( cameraPosition - vWaterWorldPosition );
-float waterFresnel = pow( 1.0 - clamp( dot( waterNormalWorldForColor, waterViewDirection ), 0.0, 1.0 ), 3.0 );
-waterAlbedo = mix( waterAlbedo, waterReflectionTint, waterFresnel * 0.13 );
+float waterFresnel = pow(
+  1.0 - clamp( dot( waterNormalWorldForColor, waterViewDirection ), 0.0, 1.0 ),
+  3.0
+);
+waterAlbedo = mix( waterAlbedo, waterReflectionTint, waterFresnel * 0.075 );
 
-diffuseColor.rgb *= waterAlbedo;`,
+diffuseColor.rgb *= waterAlbedo;
+
+// Reveal the actual submerged terrain near the shoreline. This is what creates a
+// real land -> wet bed -> shallow water transition instead of a hard green cutout.
+float depthAlpha = mix( 0.46, 0.95, smoothstep( 0.018, 0.42, waterDepth ) );
+float coastSoftening = mix( 1.0, 0.90, smoothstep( 0.55, 0.96, waterCoast ) );
+diffuseColor.a *= depthAlpha * coastSoftening * waterMask;`,
     );
 
     shader.fragmentShader = shader.fragmentShader.replace(
@@ -150,23 +197,25 @@ diffuseColor.rgb *= waterAlbedo;`,
       `#include <normal_fragment_maps>
 vec3 waterNormalWorld = waterWaveNormalWorld( vWaterWorldPosition.xz, waterTime );
 vec3 waterNormalView = normalize( mat3( viewMatrix ) * waterNormalWorld );
-normal = normalize( mix( normal, waterNormalView, 0.46 ) );`,
+normal = normalize( mix( normal, waterNormalView, 0.58 ) );`,
     );
 
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <roughnessmap_fragment>',
       `#include <roughnessmap_fragment>
-float waterRoughCoast = waterCoastInfluence();
-float waterRoughNoise = waterNoise( vWaterWorldPosition.xz * 0.044 + vec2( waterTime * 0.011, 4.3 ) );
-roughnessFactor *= mix( 0.82, 1.18, smoothstep( 0.18, 0.92, waterRoughCoast ) );
-roughnessFactor *= mix( 0.94, 1.06, waterRoughNoise );`,
+float waterRoughDepth = waterDepthNormalized();
+float waterRoughNoise = waterNoise( vWaterWorldPosition.xz * 0.11 + vec2( waterTime * 0.010, 4.3 ) );
+float shallowRoughness = 1.18;
+float deepRoughness = 0.88;
+roughnessFactor *= mix( shallowRoughness, deepRoughness, smoothstep( 0.05, 0.55, waterRoughDepth ) );
+roughnessFactor *= mix( 0.97, 1.03, waterRoughNoise );`,
     );
 
     material.userData.waterShader = shader;
   };
 
   material.customProgramCacheKey = () =>
-    `world-water-natural-v1:${controlMapSize}:${options.roughness ?? 0.36}`;
+    `world-water-depth-shore-v2:${controlMapSize}:${options.roughness ?? 0.48}`;
 
   return material;
 }
