@@ -117,7 +117,7 @@ vec3 sampleTerrainTriplanar( sampler2D tex, vec3 position, vec3 normal, float sc
 
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <map_fragment>',
-      `vec2 terrainUv = vMapUv * terrainRepeat;
+      `vec2 terrainUv = vMapUv;
 vec4 weights = terrainWeights();
 vec3 grassColor = texture2D( terrainGrass, terrainUv ).rgb;
 vec3 dirtColor = texture2D( terrainDirt, terrainUv * 0.92 ).rgb;
