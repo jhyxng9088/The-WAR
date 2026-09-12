@@ -4,6 +4,13 @@ import {
   WORLD_HEIGHTMAP_U8,
   WORLD_HEIGHTMAP_WIDTH,
 } from '../assets/world/AuthoredWorldHeightmap';
+import {
+  TouchGestureIntent,
+  type TouchGestureSample,
+  TOUCH_ROTATE_RESPONSE,
+  TOUCH_TILT_RESPONSE,
+  TOUCH_ZOOM_RESPONSE,
+} from '../input/TouchGestureIntent';
 import { createTerrainSurfaceMaterial } from '../world/rendering/TerrainSurfaceMaterial';
 import './terrain-editor.css';
 
@@ -15,13 +22,6 @@ interface PointerState {
   y: number;
 }
 
-interface ViewGesture {
-  midpointX: number;
-  midpointY: number;
-  distance: number;
-  angle: number;
-}
-
 const DATA_SIZE = 257;
 const MESH_SEGMENTS = 128;
 const WORLD_SIZE = 220;
@@ -29,9 +29,6 @@ const MIN_CAMERA_DISTANCE = 58;
 const MAX_CAMERA_DISTANCE = 360;
 const MIN_CAMERA_PITCH = 0.48;
 const MAX_CAMERA_PITCH = 1.24;
-const TILT_RESPONSE = 0.0022;
-const TILT_ZOOM_DEADZONE = 0.025;
-const TILT_TWIST_DEADZONE = 0.035;
 const MAX_UNDO = 18;
 const WATER_COLOR = 0x467683;
 const VIEW_GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -48,6 +45,7 @@ export class TerrainEditor {
   private readonly undoStack: Float32Array[] = [];
   private readonly redoStack: Float32Array[] = [];
   private readonly pointers = new Map<number, PointerState>();
+  private readonly touchGesture = new TouchGestureIntent();
 
   private terrain: THREE.Mesh;
   private water: THREE.Mesh;
@@ -66,7 +64,6 @@ export class TerrainEditor {
   private cameraPitch = 1.07;
   private cameraDistance = 190;
   private previousSinglePointer: PointerState | null = null;
-  private previousViewGesture: ViewGesture | null = null;
   private strokeSnapshotTaken = false;
   private readonly uiRoot: HTMLDivElement;
 
@@ -258,7 +255,7 @@ export class TerrainEditor {
         </div>
       </div>
 
-      <div class="terrain-editor-hint">VIEW: 한 손가락 이동 · 두 손가락 비틀기 회전 · 핀치 줌 · 두 손가락 위/아래 기울기 · SCULPT: 한 손가락 지형 편집</div>
+      <div class="terrain-editor-hint">VIEW: 한 손가락 이동 · 핀치 줌 · 두 손가락 비틀기 회전 · 두 손가락 세로 드래그 기울기 · SCULPT: 한 손가락 지형 편집</div>
     `;
     return root;
   }
@@ -364,8 +361,13 @@ export class TerrainEditor {
     this.canvas.setPointerCapture(event.pointerId);
     this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     this.previousSinglePointer = { x: event.clientX, y: event.clientY };
-    this.previousViewGesture = this.pointers.size >= 2 ? this.currentViewGesture() : null;
     this.strokeSnapshotTaken = false;
+
+    if (this.pointers.size === 2) {
+      this.touchGesture.begin(this.currentViewGesture());
+    } else if (this.pointers.size > 2) {
+      this.touchGesture.reset();
+    }
 
     if (this.mode === 'sculpt' && this.pointers.size === 1) {
       const hit = this.terrainPoint(event.clientX, event.clientY);
@@ -400,7 +402,7 @@ export class TerrainEditor {
     }
 
     this.brushRing.visible = false;
-    if (this.pointers.size >= 2) {
+    if (this.pointers.size === 2) {
       this.handleTwoPointerView();
       return;
     }
@@ -411,8 +413,15 @@ export class TerrainEditor {
   private readonly onPointerUp = (event: PointerEvent): void => {
     this.pointers.delete(event.pointerId);
     if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId);
-    this.previousSinglePointer = null;
-    this.previousViewGesture = this.pointers.size >= 2 ? this.currentViewGesture() : null;
+
+    const remaining = Array.from(this.pointers.values());
+    this.previousSinglePointer = remaining[0] ? { ...remaining[0] } : null;
+    if (this.pointers.size === 2) {
+      this.touchGesture.begin(this.currentViewGesture());
+    } else {
+      this.touchGesture.reset();
+    }
+
     this.strokeSnapshotTaken = false;
     if (this.pointers.size === 0 && this.mode === 'sculpt') this.brushRing.visible = false;
   };
@@ -451,55 +460,63 @@ export class TerrainEditor {
   }
 
   private handleTwoPointerView(): void {
-    const next = this.currentViewGesture();
-    const previous = this.previousViewGesture;
-    this.previousViewGesture = next;
-    if (!next || !previous) return;
+    const sample = this.currentViewGesture();
+    if (!sample) return;
+    const delta = this.touchGesture.update(sample);
+    if (!delta) return;
 
-    const anchor = this.viewGroundPoint(previous.midpointX, previous.midpointY);
-    const angleDelta = shortestAngle(next.angle - previous.angle);
-    const ratio = previous.distance > 0 ? next.distance / previous.distance : 1;
-    const zoomMotion = Math.abs(Math.log(Math.max(0.0001, ratio)));
-    const twistMotion = Math.abs(angleDelta);
-    const centerDy = next.midpointY - previous.midpointY;
-
-    this.cameraYaw -= angleDelta;
-    if (zoomMotion < TILT_ZOOM_DEADZONE && twistMotion < TILT_TWIST_DEADZONE) {
-      this.cameraPitch = THREE.MathUtils.clamp(
-        this.cameraPitch + centerDy * TILT_RESPONSE,
-        MIN_CAMERA_PITCH,
-        MAX_CAMERA_PITCH,
-      );
-    }
-
-    if (Number.isFinite(ratio) && ratio > 0) {
+    if (delta.mode === 'zoom') {
+      const anchor = this.viewGroundPoint(sample.centerX, sample.centerY);
       this.cameraDistance = THREE.MathUtils.clamp(
-        this.cameraDistance / ratio,
+        this.cameraDistance / Math.pow(delta.scale, TOUCH_ZOOM_RESPONSE),
         MIN_CAMERA_DISTANCE,
         MAX_CAMERA_DISTANCE,
       );
-    }
-    this.syncCamera();
-
-    if (anchor) {
-      const after = this.viewGroundPoint(next.midpointX, next.midpointY);
-      if (after) {
-        this.target.x += anchor.x - after.x;
-        this.target.z += anchor.z - after.z;
-        this.clampTarget();
-        this.syncCamera();
+      this.syncCamera();
+      if (anchor) {
+        const after = this.viewGroundPoint(sample.centerX, sample.centerY);
+        if (after) {
+          this.target.x += anchor.x - after.x;
+          this.target.z += anchor.z - after.z;
+          this.clampTarget();
+          this.syncCamera();
+        }
       }
+      return;
     }
+
+    if (delta.mode === 'rotate') {
+      const anchor = this.viewGroundPoint(sample.centerX, sample.centerY);
+      this.cameraYaw -= delta.angleDelta * TOUCH_ROTATE_RESPONSE;
+      this.syncCamera();
+      if (anchor) {
+        const after = this.viewGroundPoint(sample.centerX, sample.centerY);
+        if (after) {
+          this.target.x += anchor.x - after.x;
+          this.target.z += anchor.z - after.z;
+          this.clampTarget();
+          this.syncCamera();
+        }
+      }
+      return;
+    }
+
+    this.cameraPitch = THREE.MathUtils.clamp(
+      this.cameraPitch + delta.verticalDelta * TOUCH_TILT_RESPONSE,
+      MIN_CAMERA_PITCH,
+      MAX_CAMERA_PITCH,
+    );
+    this.syncCamera();
   }
 
-  private currentViewGesture(): ViewGesture | null {
+  private currentViewGesture(): TouchGestureSample | null {
     const points = Array.from(this.pointers.values());
     const a = points[0];
     const b = points[1];
     if (!a || !b) return null;
     return {
-      midpointX: (a.x + b.x) * 0.5,
-      midpointY: (a.y + b.y) * 0.5,
+      centerX: (a.x + b.x) * 0.5,
+      centerY: (a.y + b.y) * 0.5,
       distance: Math.hypot(a.x - b.x, a.y - b.y),
       angle: Math.atan2(b.y - a.y, b.x - a.x),
     };
@@ -819,11 +836,4 @@ function downloadBlob(blob: Blob, filename: string): void {
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-function shortestAngle(value: number): number {
-  let angle = value;
-  while (angle > Math.PI) angle -= Math.PI * 2;
-  while (angle < -Math.PI) angle += Math.PI * 2;
-  return angle;
 }
