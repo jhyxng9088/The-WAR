@@ -4,6 +4,7 @@ import {
   WORLD_HEIGHTMAP_U8,
   WORLD_HEIGHTMAP_WIDTH,
 } from '../assets/world/AuthoredWorldHeightmap';
+import { createTerrainSurfaceMaterial } from '../world/rendering/TerrainSurfaceMaterial';
 import './terrain-editor.css';
 
 type EditorMode = 'view' | 'sculpt';
@@ -25,14 +26,19 @@ const MESH_SEGMENTS = 128;
 const WORLD_SIZE = 220;
 const MIN_CAMERA_DISTANCE = 58;
 const MAX_CAMERA_DISTANCE = 360;
+const MIN_CAMERA_PITCH = 0.48;
+const MAX_CAMERA_PITCH = 1.24;
+const ROTATE_YAW_RESPONSE = 0.0052;
+const ROTATE_PITCH_RESPONSE = 0.0038;
 const MAX_UNDO = 18;
-const WATER_COLOR = 0x345f70;
+const WATER_COLOR = 0x2e5661;
+const VIEW_GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
-const COLOR_LOW = new THREE.Color(0x5c704d);
-const COLOR_MID = new THREE.Color(0x78815a);
-const COLOR_HIGH = new THREE.Color(0x756e5f);
-const COLOR_ROCK = new THREE.Color(0x77756f);
-const COLOR_PEAK = new THREE.Color(0xb6b4ad);
+const COLOR_LOW = new THREE.Color(0x556247);
+const COLOR_MID = new THREE.Color(0x4a5e43);
+const COLOR_HIGH = new THREE.Color(0x5d6155);
+const COLOR_ROCK = new THREE.Color(0x66625d);
+const COLOR_PEAK = new THREE.Color(0x99958d);
 
 export class TerrainEditor {
   private readonly scene = new THREE.Scene();
@@ -60,8 +66,8 @@ export class TerrainEditor {
   private brushRadius = 10;
   private brushStrength = 0.022;
   private flattenTarget = 0.5;
-  private cameraYaw = 0.7;
-  private cameraPitch = 0.86;
+  private cameraYaw = 0.67;
+  private cameraPitch = 1.07;
   private cameraDistance = 190;
   private previousSinglePointer: PointerState | null = null;
   private previousViewGesture: ViewGesture | null = null;
@@ -148,11 +154,10 @@ export class TerrainEditor {
     const colors = new Float32Array((MESH_SEGMENTS + 1) * (MESH_SEGMENTS + 1) * 3);
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-    const material = new THREE.MeshStandardMaterial({
-      vertexColors: true,
-      roughness: 0.94,
-      metalness: 0,
-      dithering: true,
+    const material = createTerrainSurfaceMaterial({
+      detailRepeat: 18,
+      normalStrength: 0.48,
+      roughness: 0.88,
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.receiveShadow = true;
@@ -164,7 +169,7 @@ export class TerrainEditor {
     geometry.rotateX(-Math.PI / 2);
     const material = new THREE.MeshStandardMaterial({
       color: WATER_COLOR,
-      roughness: 0.58,
+      roughness: 0.5,
       metalness: 0,
       transparent: true,
       opacity: 0.92,
@@ -256,7 +261,7 @@ export class TerrainEditor {
         </div>
       </div>
 
-      <div class="terrain-editor-hint">SCULPT: 한 손가락로 지형 편집 · 두 손가락으로 이동/확대 · VIEW: 한 손가락으로 시점 회전</div>
+      <div class="terrain-editor-hint">VIEW: 한 손가락 이동 · 두 손가락 회전 · 핀치 확대/축소 · SCULPT: 한 손가락 지형 편집</div>
     `;
     return root;
   }
@@ -417,22 +422,34 @@ export class TerrainEditor {
 
   private readonly onWheel = (event: WheelEvent): void => {
     event.preventDefault();
+    const anchor = this.viewGroundPoint(event.clientX, event.clientY);
     this.cameraDistance = THREE.MathUtils.clamp(
       this.cameraDistance * Math.exp(event.deltaY * 0.0012),
       MIN_CAMERA_DISTANCE,
       MAX_CAMERA_DISTANCE,
     );
     this.syncCamera();
+    if (!anchor) return;
+    const after = this.viewGroundPoint(event.clientX, event.clientY);
+    if (after) {
+      this.target.x += anchor.x - after.x;
+      this.target.z += anchor.z - after.z;
+      this.clampTarget();
+      this.syncCamera();
+    }
   };
 
   private handleSinglePointerView(clientX: number, clientY: number): void {
     const previous = this.previousSinglePointer;
     this.previousSinglePointer = { x: clientX, y: clientY };
     if (!previous) return;
-    const dx = clientX - previous.x;
-    const dy = clientY - previous.y;
-    this.cameraYaw -= dx * 0.006;
-    this.cameraPitch = THREE.MathUtils.clamp(this.cameraPitch + dy * 0.0045, 0.36, 1.3);
+
+    const before = this.viewGroundPoint(previous.x, previous.y);
+    const after = this.viewGroundPoint(clientX, clientY);
+    if (!before || !after) return;
+    this.target.x += before.x - after.x;
+    this.target.z += before.z - after.z;
+    this.clampTarget();
     this.syncCamera();
   }
 
@@ -442,26 +459,33 @@ export class TerrainEditor {
     this.previousViewGesture = next;
     if (!next || !previous) return;
 
+    const anchor = this.viewGroundPoint(previous.midpointX, previous.midpointY);
+    const dx = next.midpointX - previous.midpointX;
+    const dy = next.midpointY - previous.midpointY;
+    this.cameraYaw -= dx * ROTATE_YAW_RESPONSE;
+    this.cameraPitch = THREE.MathUtils.clamp(
+      this.cameraPitch + dy * ROTATE_PITCH_RESPONSE,
+      MIN_CAMERA_PITCH,
+      MAX_CAMERA_PITCH,
+    );
+
     const zoomRatio = previous.distance / Math.max(1, next.distance);
     this.cameraDistance = THREE.MathUtils.clamp(
       this.cameraDistance * zoomRatio,
       MIN_CAMERA_DISTANCE,
       MAX_CAMERA_DISTANCE,
     );
-
-    const dx = next.midpointX - previous.midpointX;
-    const dy = next.midpointY - previous.midpointY;
-    const panScale = this.cameraDistance * 0.00155;
-    const rightX = Math.cos(this.cameraYaw);
-    const rightZ = -Math.sin(this.cameraYaw);
-    const forwardX = Math.sin(this.cameraYaw);
-    const forwardZ = Math.cos(this.cameraYaw);
-    this.target.x -= rightX * dx * panScale + forwardX * dy * panScale;
-    this.target.z -= rightZ * dx * panScale + forwardZ * dy * panScale;
-    const clamp = WORLD_SIZE * 0.43;
-    this.target.x = THREE.MathUtils.clamp(this.target.x, -clamp, clamp);
-    this.target.z = THREE.MathUtils.clamp(this.target.z, -clamp, clamp);
     this.syncCamera();
+
+    if (anchor) {
+      const after = this.viewGroundPoint(next.midpointX, next.midpointY);
+      if (after) {
+        this.target.x += anchor.x - after.x;
+        this.target.z += anchor.z - after.z;
+        this.clampTarget();
+        this.syncCamera();
+      }
+    }
   }
 
   private currentViewGesture(): ViewGesture | null {
@@ -531,6 +555,23 @@ export class TerrainEditor {
     return hit?.point ?? null;
   }
 
+  private viewGroundPoint(clientX: number, clientY: number): THREE.Vector3 | null {
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    this.pointerNdc.set(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    this.raycaster.setFromCamera(this.pointerNdc, this.camera);
+    return this.raycaster.ray.intersectPlane(VIEW_GROUND, new THREE.Vector3());
+  }
+
+  private clampTarget(): void {
+    const clamp = WORLD_SIZE * 0.43;
+    this.target.x = THREE.MathUtils.clamp(this.target.x, -clamp, clamp);
+    this.target.z = THREE.MathUtils.clamp(this.target.z, -clamp, clamp);
+  }
+
   private normalizedHeightAtWorld(x: number, z: number): number {
     const u = THREE.MathUtils.clamp(x / WORLD_SIZE + 0.5, 0, 1);
     const v = THREE.MathUtils.clamp(z / WORLD_SIZE + 0.5, 0, 1);
@@ -570,9 +611,9 @@ export class TerrainEditor {
       const rock = THREE.MathUtils.smoothstep(slope, 0.08, 0.42);
 
       color.copy(COLOR_LOW).lerp(COLOR_MID, land * 0.7).lerp(COLOR_HIGH, high * 0.72);
-      color.lerp(COLOR_ROCK, Math.max(rock * 0.72, high * 0.24));
-      color.lerp(COLOR_PEAK, peak * (0.44 + rock * 0.34));
-      const shade = 0.82 + THREE.MathUtils.clamp(normals.getY(i), 0, 1) * 0.18;
+      color.lerp(COLOR_ROCK, Math.max(rock * 0.78, high * 0.26));
+      color.lerp(COLOR_PEAK, peak * (0.38 + rock * 0.34));
+      const shade = 0.84 + THREE.MathUtils.clamp(normals.getY(i), 0, 1) * 0.16;
       color.multiplyScalar(shade);
       colors.setXYZ(i, color.r, color.g, color.b);
     }
