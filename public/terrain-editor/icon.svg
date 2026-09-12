@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="THE WAR Terrain Lab">
+  <rect width="512" height="512" rx="112" fill="#182229"/>
+  <path d="M80 346c56-24 91-61 126-111 31-45 58-74 94-74 43 0 69 42 95 79 15 22 30 40 49 53" fill="none" stroke="#e8d27c" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M96 381c67-19 111-51 151-89 31-30 58-47 91-47 35 0 64 17 91 42" fill="none" stroke="#8ea08d" stroke-width="16" stroke-linecap="round" opacity=".88"/>
+  <path d="M113 414c62-14 105-35 143-60 35-23 68-34 101-34 27 0 51 7 75 20" fill="none" stroke="#5e7065" stroke-width="12" stroke-linecap="round" opacity=".9"/>
+</svg>
