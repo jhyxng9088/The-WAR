@@ -10,7 +10,7 @@ import {
 } from '../WorldField';
 
 export interface TerrainBlendControlMaps {
-  /** R moisture, G fertility, B roughness, A coast influence. */
+  /** R moisture, G fertility, B roughness, A visual coast influence. */
   regional: THREE.DataTexture;
   /** R mountain strength, G normalized river distance, B land mask, A normalized water depth. */
   features: THREE.DataTexture;
@@ -46,11 +46,15 @@ export function getTerrainBlendControlMaps(size = DEFAULT_CONTROL_SIZE): Terrain
       const waterDepth = land
         ? 0
         : THREE.MathUtils.clamp((SEA_LEVEL - sample.height) / WATER_DEPTH_MAX, 0, 1);
+      const coast = THREE.MathUtils.clamp(coastInfluenceAt(worldX, z), 0, 1);
+      // Rendering used to paint the whole 15+ world-unit coast influence as a tan
+      // band. Compress it here so only the actual shoreline reads as sand/wet soil.
+      const visualCoast = Math.pow(coast, land ? 2.6 : 1.8);
 
       regionalData[pixel] = encode01(sample.moisture);
       regionalData[pixel + 1] = encode01(sample.fertility);
       regionalData[pixel + 2] = encode01(sample.roughness);
-      regionalData[pixel + 3] = encode01(coastInfluenceAt(worldX, z));
+      regionalData[pixel + 3] = encode01(visualCoast);
 
       featureData[pixel] = encode01(mountainStrengthAt(worldX, z));
       featureData[pixel + 1] = encode01(
