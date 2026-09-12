@@ -10,17 +10,19 @@ import {
 } from '../WorldField';
 
 export interface TerrainBlendControlMaps {
-  /** R moisture, G fertility, B roughness, A coast influence. */
+  /** R moisture, G fertility, B roughness, A visual coast influence. */
   regional: THREE.DataTexture;
-  /** R mountain strength, G normalized river distance, B land mask, A reserved. */
+  /** R mountain strength, G normalized river distance, B land mask, A normalized water depth. */
   features: THREE.DataTexture;
   riverDistanceMax: number;
+  waterDepthMax: number;
 }
 
 // 512² keeps biome/coast transitions fine enough for the strategy camera without
 // the 4x startup/memory cost of 1024² on iPad-class devices.
 const DEFAULT_CONTROL_SIZE = 512;
 const RIVER_DISTANCE_MAX = 48;
+const WATER_DEPTH_MAX = 2.4;
 const cache = new Map<number, TerrainBlendControlMaps>();
 
 export function getTerrainBlendControlMaps(size = DEFAULT_CONTROL_SIZE): TerrainBlendControlMaps {
@@ -41,18 +43,25 @@ export function getTerrainBlendControlMaps(size = DEFAULT_CONTROL_SIZE): Terrain
       const pixel = (y * size + x) * 4;
       const riverDistance = riverDistanceAt(worldX, z);
       const land = sample.height > SEA_LEVEL && sample.biome !== 'sea' ? 1 : 0;
+      const waterDepth = land
+        ? 0
+        : THREE.MathUtils.clamp((SEA_LEVEL - sample.height) / WATER_DEPTH_MAX, 0, 1);
+      const coast = THREE.MathUtils.clamp(coastInfluenceAt(worldX, z), 0, 1);
+      // Rendering used to paint the whole 15+ world-unit coast influence as a tan
+      // band. Compress it here so only the actual shoreline reads as sand/wet soil.
+      const visualCoast = Math.pow(coast, land ? 2.6 : 1.8);
 
       regionalData[pixel] = encode01(sample.moisture);
       regionalData[pixel + 1] = encode01(sample.fertility);
       regionalData[pixel + 2] = encode01(sample.roughness);
-      regionalData[pixel + 3] = encode01(coastInfluenceAt(worldX, z));
+      regionalData[pixel + 3] = encode01(visualCoast);
 
       featureData[pixel] = encode01(mountainStrengthAt(worldX, z));
       featureData[pixel + 1] = encode01(
         THREE.MathUtils.clamp(riverDistance / RIVER_DISTANCE_MAX, 0, 1),
       );
       featureData[pixel + 2] = encode01(land);
-      featureData[pixel + 3] = 255;
+      featureData[pixel + 3] = encode01(waterDepth);
     }
   }
 
@@ -60,6 +69,7 @@ export function getTerrainBlendControlMaps(size = DEFAULT_CONTROL_SIZE): Terrain
     regional: createControlTexture(regionalData, size, 'terrain-regional-control'),
     features: createControlTexture(featureData, size, 'terrain-feature-control'),
     riverDistanceMax: RIVER_DISTANCE_MAX,
+    waterDepthMax: WATER_DEPTH_MAX,
   };
   cache.set(size, result);
   return result;
