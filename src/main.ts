@@ -1,5 +1,6 @@
 import './styles.css';
 import { Game } from './core/Game';
+import { WORLD_HEIGHTMAP_STORAGE_KEY } from './world/WorldHeightmapStore';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game-canvas');
 
@@ -18,8 +19,19 @@ if (isTerrainEditor) {
   const editor = new TerrainEditor(canvas);
   editor.start();
 } else {
+  installSharedTerrainReload();
   const game = new Game(canvas);
   game.start();
+}
+
+function installSharedTerrainReload(): void {
+  window.addEventListener('storage', (event) => {
+    if (event.key !== WORLD_HEIGHTMAP_STORAGE_KEY || event.oldValue === event.newValue) return;
+    // WorldField owns derived distance/control data at module startup. A clean reload
+    // keeps every dependent system (terrain, forests, settlements and overlays) on
+    // the exact same Terrain Lab heightmap rather than hot-swapping only the mesh.
+    window.location.reload();
+  });
 }
 
 function installTerrainEditorPlatformGuards(): void {
