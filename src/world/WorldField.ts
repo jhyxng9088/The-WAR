@@ -3,6 +3,7 @@ import {
   WORLD_HEIGHTMAP_U8,
   WORLD_HEIGHTMAP_WIDTH,
 } from '../assets/world/AuthoredWorldHeightmap';
+import { strategicMountainReliefAt } from './StrategicMountainRelief';
 
 export const MAP_SCALE = 2.5;
 export const WORLD_WIDTH = 420;
@@ -61,10 +62,10 @@ const LAND_DISTANCE_CELLS = createDistanceField('land');
 
 export function terrainSampleAt(x: number, z: number): TerrainSample {
   const raw = heightmapValueAt(x, z);
-  const height = terrainHeightFromRaw(raw);
+  const height = terrainHeightFromRawAt(x, z, raw);
   const coastInfluence = coastInfluenceFromRaw(x, z, raw);
   const roughness = roughnessFromValues(x, z, height, raw);
-  const moisture = moistureFromValues(x, z, raw, coastInfluence);
+  const moisture = moistureFromValues(x, z, raw, coastInfluence, height);
   const fertility = fertilityFromValues(x, z, height, moisture, roughness, raw);
 
   return {
@@ -78,7 +79,8 @@ export function terrainSampleAt(x: number, z: number): TerrainSample {
 }
 
 export function terrainHeight(x: number, z: number): number {
-  return terrainHeightFromRaw(heightmapValueAt(x, z));
+  const raw = heightmapValueAt(x, z);
+  return terrainHeightFromRawAt(x, z, raw);
 }
 
 export function islandSignal(x: number, z: number): number {
@@ -100,20 +102,21 @@ export function coastInfluenceAt(x: number, z: number): number {
 
 export function moistureAt(x: number, z: number): number {
   const raw = heightmapValueAt(x, z);
-  return moistureFromValues(x, z, raw, coastInfluenceFromRaw(x, z, raw));
+  const height = terrainHeightFromRawAt(x, z, raw);
+  return moistureFromValues(x, z, raw, coastInfluenceFromRaw(x, z, raw), height);
 }
 
 export function roughnessAt(x: number, z: number): number {
   const raw = heightmapValueAt(x, z);
-  return roughnessFromValues(x, z, terrainHeightFromRaw(raw), raw);
+  return roughnessFromValues(x, z, terrainHeightFromRawAt(x, z, raw), raw);
 }
 
 export function fertilityAt(x: number, z: number): number {
   const raw = heightmapValueAt(x, z);
-  const height = terrainHeightFromRaw(raw);
+  const height = terrainHeightFromRawAt(x, z, raw);
   const coastInfluence = coastInfluenceFromRaw(x, z, raw);
   const roughness = roughnessFromValues(x, z, height, raw);
-  const moisture = moistureFromValues(x, z, raw, coastInfluence);
+  const moisture = moistureFromValues(x, z, raw, coastInfluence, height);
   return fertilityFromValues(x, z, height, moisture, roughness, raw);
 }
 
@@ -126,7 +129,7 @@ export function forestDensityAt(x: number, z: number): number {
 
   const raw = heightmapValueAt(x, z);
   const moisture = moistureAt(x, z);
-  const height = terrainHeightFromRaw(raw);
+  const height = terrainHeightFromRawAt(x, z, raw);
   const mountain = mountainStrengthAt(x, z);
   const waterDistance = waterDistanceAt(x, z);
   const regionNoise = valueNoise(x * 0.022 + 6.1, z * 0.022 - 3.7) * 0.2;
@@ -151,8 +154,11 @@ export function mountainStrengthAt(x: number, z: number): number {
 
   const elevation = smoothRange(raw, 0.34, 0.82);
   const localRoughness = heightGradientAt(x, z);
-  const ridge = smoothRange(localRoughness, 0.014, 0.075);
-  return clamp01(elevation * 0.78 + ridge * elevation * 0.46);
+  const authoredRidge = smoothRange(localRoughness, 0.014, 0.075);
+  const landInterior = smoothRange(raw, LAND_THRESHOLD + 0.012, 0.19);
+  const strategicRidge = strategicMountainReliefAt(x, z, landInterior).strength;
+  const authoredStrength = elevation * 0.78 + authoredRidge * elevation * 0.46;
+  return clamp01(Math.max(authoredStrength, strategicRidge * 0.96));
 }
 
 export function deterministic01(x: number, z: number, seed = 0): number {
@@ -164,7 +170,7 @@ export function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
-function terrainHeightFromRaw(raw: number): number {
+function terrainHeightFromRawAt(x: number, z: number, raw: number): number {
   if (raw <= LAND_THRESHOLD) {
     const waterDepth = 1 - clamp01(raw / LAND_THRESHOLD);
     return SEA_LEVEL - 0.24 - waterDepth * 2.3;
@@ -172,7 +178,10 @@ function terrainHeightFromRaw(raw: number): number {
 
   const normalized = clamp01((raw - LAND_THRESHOLD) / (1 - LAND_THRESHOLD));
   const shaped = Math.pow(normalized, 1.14);
-  return SEA_LEVEL + 0.26 + shaped * MAX_LAND_HEIGHT;
+  const baseHeight = SEA_LEVEL + 0.26 + shaped * MAX_LAND_HEIGHT;
+  const landInterior = smoothRange(raw, LAND_THRESHOLD + 0.012, 0.19);
+  const strategicRelief = strategicMountainReliefAt(x, z, landInterior);
+  return baseHeight + strategicRelief.height;
 }
 
 function coastInfluenceFromRaw(x: number, z: number, raw: number): number {
@@ -182,12 +191,18 @@ function coastInfluenceFromRaw(x: number, z: number, raw: number): number {
   return 1 - smoothRange(waterDistanceAt(x, z), 1.8, 15.5);
 }
 
-function moistureFromValues(x: number, z: number, raw: number, coastInfluence: number): number {
+function moistureFromValues(
+  x: number,
+  z: number,
+  raw: number,
+  coastInfluence: number,
+  height: number,
+): number {
   if (raw <= LAND_THRESHOLD) return 1;
 
   const waterDistance = waterDistanceAt(x, z);
   const waterMoisture = 1 - smoothRange(waterDistance, 2.2, 34);
-  const elevationDryness = smoothRange(terrainHeightFromRaw(raw), 6.2, 11.5);
+  const elevationDryness = smoothRange(height, 6.2, 13.2);
   const broad = valueNoise(x * 0.012 + 4.2, z * 0.012 - 7.1) * 0.12;
   const local = valueNoise(x * 0.039 - 8.6, z * 0.039 + 2.8) * 0.07;
 
@@ -206,9 +221,11 @@ function roughnessFromValues(x: number, z: number, height: number, raw: number):
 
   const gradient = heightGradientAt(x, z);
   const slope = smoothRange(gradient, 0.012, 0.086);
-  const elevation = smoothRange(height, 4.8, 11.6);
+  const elevation = smoothRange(height, 4.8, 13.8);
   const brokenGround = Math.abs(valueNoise(x * 0.045 - 3.1, z * 0.045 + 7.4)) * 0.13;
-  return clamp01(0.06 + slope * 0.68 + elevation * 0.22 + brokenGround);
+  const landInterior = smoothRange(raw, LAND_THRESHOLD + 0.012, 0.19);
+  const strategicRidge = strategicMountainReliefAt(x, z, landInterior).strength;
+  return clamp01(0.06 + slope * 0.60 + elevation * 0.20 + strategicRidge * 0.24 + brokenGround);
 }
 
 function fertilityFromValues(
