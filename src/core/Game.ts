@@ -24,8 +24,8 @@ export class Game {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.02;
 
-    this.scene.background = new THREE.Color(0x3f5257);
-    this.scene.fog = new THREE.Fog(0x3f5257, 138, 260);
+    this.scene.background = new THREE.Color(0x35494f);
+    this.scene.fog = new THREE.Fog(0x35494f, 250, 620);
 
     this.camera = new WorldCamera();
     this.input = new WorldInput(canvas, this.camera);
