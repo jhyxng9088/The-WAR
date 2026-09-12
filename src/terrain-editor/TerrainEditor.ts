@@ -19,6 +19,7 @@ interface ViewGesture {
   midpointX: number;
   midpointY: number;
   distance: number;
+  angle: number;
 }
 
 const DATA_SIZE = 257;
@@ -28,17 +29,12 @@ const MIN_CAMERA_DISTANCE = 58;
 const MAX_CAMERA_DISTANCE = 360;
 const MIN_CAMERA_PITCH = 0.48;
 const MAX_CAMERA_PITCH = 1.24;
-const ROTATE_YAW_RESPONSE = 0.0052;
-const ROTATE_PITCH_RESPONSE = 0.0038;
+const TILT_RESPONSE = 0.0022;
+const TILT_ZOOM_DEADZONE = 0.025;
+const TILT_TWIST_DEADZONE = 0.035;
 const MAX_UNDO = 18;
-const WATER_COLOR = 0x2e5661;
+const WATER_COLOR = 0x467683;
 const VIEW_GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-
-const COLOR_LOW = new THREE.Color(0x556247);
-const COLOR_MID = new THREE.Color(0x4a5e43);
-const COLOR_HIGH = new THREE.Color(0x5d6155);
-const COLOR_ROCK = new THREE.Color(0x66625d);
-const COLOR_PEAK = new THREE.Color(0x99958d);
 
 export class TerrainEditor {
   private readonly scene = new THREE.Scene();
@@ -61,7 +57,7 @@ export class TerrainEditor {
   private geometryDirty = true;
   private mode: EditorMode = 'sculpt';
   private tool: SculptTool = 'raise';
-  private heightScale = 30;
+  private heightScale = 8;
   private seaLevel = 0.085;
   private brushRadius = 10;
   private brushStrength = 0.022;
@@ -83,11 +79,11 @@ export class TerrainEditor {
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.03;
+    this.renderer.toneMappingExposure = 1.12;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 
-    this.scene.background = new THREE.Color(0x182229);
-    this.scene.fog = new THREE.Fog(0x182229, 230, 520);
+    this.scene.background = new THREE.Color(0x43565f);
+    this.scene.fog = new THREE.Fog(0x43565f, 250, 540);
 
     this.seedFromCurrentWorld();
     this.terrain = this.createTerrain();
@@ -151,13 +147,14 @@ export class TerrainEditor {
   private createTerrain(): THREE.Mesh {
     const geometry = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, MESH_SEGMENTS, MESH_SEGMENTS);
     geometry.rotateX(-Math.PI / 2);
-    const colors = new Float32Array((MESH_SEGMENTS + 1) * (MESH_SEGMENTS + 1) * 3);
-    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
     const material = createTerrainSurfaceMaterial({
-      detailRepeat: 18,
-      normalStrength: 0.48,
-      roughness: 0.88,
+      detailRepeat: 17,
+      normalStrength: 0.12,
+      roughness: 0.9,
+      minHeight: 0.8,
+      maxHeight: 6.4,
+      seaLevel: 0,
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.receiveShadow = true;
@@ -169,10 +166,10 @@ export class TerrainEditor {
     geometry.rotateX(-Math.PI / 2);
     const material = new THREE.MeshStandardMaterial({
       color: WATER_COLOR,
-      roughness: 0.5,
+      roughness: 0.42,
       metalness: 0,
       transparent: true,
-      opacity: 0.92,
+      opacity: 0.94,
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.y = 0;
@@ -197,10 +194,10 @@ export class TerrainEditor {
   }
 
   private addLighting(): void {
-    const sky = new THREE.HemisphereLight(0xc9d4d0, 0x514b3e, 1.5);
-    const sun = new THREE.DirectionalLight(0xffefd1, 2.15);
+    const sky = new THREE.HemisphereLight(0xdbe4df, 0x5b5548, 2.0);
+    const sun = new THREE.DirectionalLight(0xffefd7, 2.55);
     sun.position.set(-90, 150, 95);
-    const fill = new THREE.DirectionalLight(0x93aab6, 0.35);
+    const fill = new THREE.DirectionalLight(0xa8bec8, 0.52);
     fill.position.set(120, 60, -110);
     this.scene.add(sky, sun, fill);
   }
@@ -246,8 +243,8 @@ export class TerrainEditor {
             <input id="brush-strength" type="range" min="4" max="60" step="1" value="22" />
           </label>
           <label>
-            <span>산 높이 <output id="height-scale-output">30</output></span>
-            <input id="height-scale" type="range" min="8" max="60" step="1" value="30" />
+            <span>산 높이 <output id="height-scale-output">8.0</output></span>
+            <input id="height-scale" type="range" min="3" max="20" step="0.5" value="8" />
           </label>
           <label>
             <span>해수면 <output id="sea-level-output">8.5%</output></span>
@@ -261,7 +258,7 @@ export class TerrainEditor {
         </div>
       </div>
 
-      <div class="terrain-editor-hint">VIEW: 한 손가락 이동 · 두 손가락 회전 · 핀치 확대/축소 · SCULPT: 한 손가락 지형 편집</div>
+      <div class="terrain-editor-hint">VIEW: 한 손가락 이동 · 두 손가락 비틀기 회전 · 핀치 줌 · 두 손가락 위/아래 기울기 · SCULPT: 한 손가락 지형 편집</div>
     `;
     return root;
   }
@@ -318,7 +315,7 @@ export class TerrainEditor {
     this.bindRange('height-scale', 'height-scale-output', (value) => {
       this.heightScale = value;
       this.markGeometryDirty();
-      return value.toFixed(0);
+      return value.toFixed(1);
     });
     this.bindRange('sea-level', 'sea-level-output', (value) => {
       this.seaLevel = value / 100;
@@ -460,21 +457,28 @@ export class TerrainEditor {
     if (!next || !previous) return;
 
     const anchor = this.viewGroundPoint(previous.midpointX, previous.midpointY);
-    const dx = next.midpointX - previous.midpointX;
-    const dy = next.midpointY - previous.midpointY;
-    this.cameraYaw -= dx * ROTATE_YAW_RESPONSE;
-    this.cameraPitch = THREE.MathUtils.clamp(
-      this.cameraPitch + dy * ROTATE_PITCH_RESPONSE,
-      MIN_CAMERA_PITCH,
-      MAX_CAMERA_PITCH,
-    );
+    const angleDelta = shortestAngle(next.angle - previous.angle);
+    const ratio = previous.distance > 0 ? next.distance / previous.distance : 1;
+    const zoomMotion = Math.abs(Math.log(Math.max(0.0001, ratio)));
+    const twistMotion = Math.abs(angleDelta);
+    const centerDy = next.midpointY - previous.midpointY;
 
-    const zoomRatio = previous.distance / Math.max(1, next.distance);
-    this.cameraDistance = THREE.MathUtils.clamp(
-      this.cameraDistance * zoomRatio,
-      MIN_CAMERA_DISTANCE,
-      MAX_CAMERA_DISTANCE,
-    );
+    this.cameraYaw -= angleDelta;
+    if (zoomMotion < TILT_ZOOM_DEADZONE && twistMotion < TILT_TWIST_DEADZONE) {
+      this.cameraPitch = THREE.MathUtils.clamp(
+        this.cameraPitch + centerDy * TILT_RESPONSE,
+        MIN_CAMERA_PITCH,
+        MAX_CAMERA_PITCH,
+      );
+    }
+
+    if (Number.isFinite(ratio) && ratio > 0) {
+      this.cameraDistance = THREE.MathUtils.clamp(
+        this.cameraDistance / ratio,
+        MIN_CAMERA_DISTANCE,
+        MAX_CAMERA_DISTANCE,
+      );
+    }
     this.syncCamera();
 
     if (anchor) {
@@ -497,6 +501,7 @@ export class TerrainEditor {
       midpointX: (a.x + b.x) * 0.5,
       midpointY: (a.y + b.y) * 0.5,
       distance: Math.hypot(a.x - b.x, a.y - b.y),
+      angle: Math.atan2(b.y - a.y, b.x - a.x),
     };
   }
 
@@ -591,33 +596,7 @@ export class TerrainEditor {
     }
     positions.needsUpdate = true;
     geometry.computeVertexNormals();
-    this.updateTerrainColors();
     geometry.computeBoundingSphere();
-  }
-
-  private updateTerrainColors(): void {
-    const geometry = this.terrain.geometry as THREE.PlaneGeometry;
-    const positions = geometry.attributes.position as THREE.BufferAttribute;
-    const normals = geometry.attributes.normal as THREE.BufferAttribute;
-    const colors = geometry.attributes.color as THREE.BufferAttribute;
-    const color = new THREE.Color();
-
-    for (let i = 0; i < positions.count; i += 1) {
-      const normalized = THREE.MathUtils.clamp(positions.getY(i) / Math.max(1, this.heightScale) + this.seaLevel, 0, 1);
-      const slope = 1 - THREE.MathUtils.clamp(normals.getY(i), 0, 1);
-      const land = THREE.MathUtils.smoothstep(normalized, this.seaLevel + 0.01, this.seaLevel + 0.16);
-      const high = THREE.MathUtils.smoothstep(normalized, 0.44, 0.78);
-      const peak = THREE.MathUtils.smoothstep(normalized, 0.72, 0.96);
-      const rock = THREE.MathUtils.smoothstep(slope, 0.08, 0.42);
-
-      color.copy(COLOR_LOW).lerp(COLOR_MID, land * 0.7).lerp(COLOR_HIGH, high * 0.72);
-      color.lerp(COLOR_ROCK, Math.max(rock * 0.78, high * 0.26));
-      color.lerp(COLOR_PEAK, peak * (0.38 + rock * 0.34));
-      const shade = 0.84 + THREE.MathUtils.clamp(normals.getY(i), 0, 1) * 0.16;
-      color.multiplyScalar(shade);
-      colors.setXYZ(i, color.r, color.g, color.b);
-    }
-    colors.needsUpdate = true;
   }
 
   private pushUndoSnapshot(): void {
@@ -840,4 +819,11 @@ function downloadBlob(blob: Blob, filename: string): void {
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function shortestAngle(value: number): number {
+  let angle = value;
+  while (angle > Math.PI) angle -= Math.PI * 2;
+  while (angle < -Math.PI) angle += Math.PI * 2;
+  return angle;
 }

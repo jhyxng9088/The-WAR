@@ -7,12 +7,15 @@ type TwoPointerGesture = {
   centerX: number;
   centerY: number;
   distance: number;
+  angle: number;
 };
 
-const PINCH_RESPONSE = 1.02;
-const ROTATE_YAW_RESPONSE = 0.0052;
-const ROTATE_PITCH_RESPONSE = 0.0038;
+const PINCH_RESPONSE = 1.0;
+const TWIST_RESPONSE = 1.0;
+const TILT_RESPONSE = 0.0022;
 const WHEEL_RESPONSE = 0.00135;
+const TILT_ZOOM_DEADZONE = 0.025;
+const TILT_TWIST_DEADZONE = 0.035;
 
 export class WorldInput {
   private readonly pointers = new Map<number, PointerState>();
@@ -64,12 +67,22 @@ export class WorldInput {
       if (!previousGesture || !nextGesture) return;
 
       const anchor = this.camera.groundPoint(previousGesture.centerX, previousGesture.centerY, rect);
-      const dx = nextGesture.centerX - previousGesture.centerX;
-      const dy = nextGesture.centerY - previousGesture.centerY;
-      this.camera.rotateBy(-dx * ROTATE_YAW_RESPONSE, dy * ROTATE_PITCH_RESPONSE);
+      const angleDelta = shortestAngle(nextGesture.angle - previousGesture.angle);
+      const ratio = previousGesture.distance > 0
+        ? nextGesture.distance / previousGesture.distance
+        : 1;
+      const zoomMotion = Math.abs(Math.log(Math.max(0.0001, ratio)));
+      const twistMotion = Math.abs(angleDelta);
+      const centerDy = nextGesture.centerY - previousGesture.centerY;
+      const pitchDelta = zoomMotion < TILT_ZOOM_DEADZONE && twistMotion < TILT_TWIST_DEADZONE
+        ? centerDy * TILT_RESPONSE
+        : 0;
 
-      if (previousGesture.distance > 0 && nextGesture.distance > 0) {
-        const ratio = nextGesture.distance / previousGesture.distance;
+      if (Math.abs(angleDelta) > 0.0005 || Math.abs(pitchDelta) > 0.0005) {
+        this.camera.rotateBy(-angleDelta * TWIST_RESPONSE, pitchDelta);
+      }
+
+      if (Number.isFinite(ratio) && ratio > 0) {
         this.camera.zoomBy(Math.pow(ratio, PINCH_RESPONSE));
       }
 
@@ -109,6 +122,14 @@ export class WorldInput {
       centerX: (a.x + b.x) * 0.5,
       centerY: (a.y + b.y) * 0.5,
       distance: Math.hypot(a.x - b.x, a.y - b.y),
+      angle: Math.atan2(b.y - a.y, b.x - a.x),
     };
   }
+}
+
+function shortestAngle(value: number): number {
+  let angle = value;
+  while (angle > Math.PI) angle -= Math.PI * 2;
+  while (angle < -Math.PI) angle += Math.PI * 2;
+  return angle;
 }
