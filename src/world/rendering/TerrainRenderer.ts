@@ -31,12 +31,14 @@ function createOcean(): THREE.Mesh {
 
   const material = createWorldWaterMaterial({
     controlMapSize: 512,
-    roughness: 0.36,
+    roughness: 0.48,
   });
 
   const mesh = new THREE.Mesh(geometry, material);
-  mesh.position.y = SEA_LEVEL;
-  mesh.renderOrder = -2;
+  // Tiny separation avoids z fighting exactly where smoothed shoreline vertices
+  // approach sea level. The transparent material still reveals the seabed below.
+  mesh.position.y = SEA_LEVEL + 0.006;
+  mesh.renderOrder = 2;
   mesh.receiveShadow = true;
   mesh.onBeforeRender = () => {
     updateWorldWaterTime(material, performance.now() * 0.001);
