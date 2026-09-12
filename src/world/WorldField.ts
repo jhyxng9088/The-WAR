@@ -4,6 +4,10 @@ import {
   WORLD_HEIGHTMAP_WIDTH,
 } from '../assets/world/AuthoredWorldHeightmap';
 import { strategicMountainReliefAt } from './StrategicMountainRelief';
+import {
+  decodeHeightmapBase64,
+  readWorldHeightmapOverride,
+} from './WorldHeightmapStore';
 
 export const MAP_SCALE = 2.5;
 export const WORLD_WIDTH = 420;
@@ -46,14 +50,17 @@ export interface RiverDefinition {
 // second procedural river network on top of the authored terrain.
 export const RIVERS: readonly RiverDefinition[] = [];
 
-const HEIGHT_BYTES = decodeBase64(WORLD_HEIGHTMAP_U8);
-const EXPECTED_SAMPLES = WORLD_HEIGHTMAP_WIDTH * WORLD_HEIGHTMAP_HEIGHT;
+const STORED_HEIGHTMAP = readWorldHeightmapOverride();
+const HEIGHT_BYTES = STORED_HEIGHTMAP?.bytes ?? decodeHeightmapBase64(WORLD_HEIGHTMAP_U8);
+const HEIGHTMAP_WIDTH = STORED_HEIGHTMAP?.width ?? WORLD_HEIGHTMAP_WIDTH;
+const HEIGHTMAP_HEIGHT = STORED_HEIGHTMAP?.height ?? WORLD_HEIGHTMAP_HEIGHT;
+const EXPECTED_SAMPLES = HEIGHTMAP_WIDTH * HEIGHTMAP_HEIGHT;
 const LAND_THRESHOLD = 0.028;
 const MAX_LAND_HEIGHT = 12.2;
 
 if (HEIGHT_BYTES.length !== EXPECTED_SAMPLES) {
   throw new Error(
-    `Authored world heightmap is incomplete: expected ${EXPECTED_SAMPLES} samples, got ${HEIGHT_BYTES.length}.`,
+    `World heightmap is incomplete: expected ${EXPECTED_SAMPLES} samples, got ${HEIGHT_BYTES.length}.`,
   );
 }
 
@@ -219,6 +226,7 @@ function moistureFromValues(
 function roughnessFromValues(x: number, z: number, height: number, raw: number): number {
   if (raw <= LAND_THRESHOLD) return 0;
 
+  // Keep the slope sampling footprint stable across authored 65² and Terrain Lab 257² data.
   const gradient = heightGradientAt(x, z);
   const slope = smoothRange(gradient, 0.012, 0.086);
   const elevation = smoothRange(height, 4.8, 13.8);
@@ -280,13 +288,13 @@ function heightGradientAt(x: number, z: number): number {
 }
 
 function heightmapValueAt(x: number, z: number): number {
-  const u = clamp01((x + WORLD_HALF_WIDTH) / WORLD_WIDTH) * (WORLD_HEIGHTMAP_WIDTH - 1);
-  const v = clamp01((WORLD_HALF_DEPTH - z) / WORLD_DEPTH) * (WORLD_HEIGHTMAP_HEIGHT - 1);
+  const u = clamp01((x + WORLD_HALF_WIDTH) / WORLD_WIDTH) * (HEIGHTMAP_WIDTH - 1);
+  const v = clamp01((WORLD_HALF_DEPTH - z) / WORLD_DEPTH) * (HEIGHTMAP_HEIGHT - 1);
 
   const x0 = Math.floor(u);
   const y0 = Math.floor(v);
-  const x1 = Math.min(WORLD_HEIGHTMAP_WIDTH - 1, x0 + 1);
-  const y1 = Math.min(WORLD_HEIGHTMAP_HEIGHT - 1, y0 + 1);
+  const x1 = Math.min(HEIGHTMAP_WIDTH - 1, x0 + 1);
+  const y1 = Math.min(HEIGHTMAP_HEIGHT - 1, y0 + 1);
   const tx = u - x0;
   const ty = v - y0;
 
@@ -300,35 +308,38 @@ function heightmapValueAt(x: number, z: number): number {
 }
 
 function waterDistanceAt(x: number, z: number): number {
-  const u = clamp01((x + WORLD_HALF_WIDTH) / WORLD_WIDTH) * (WORLD_HEIGHTMAP_WIDTH - 1);
-  const v = clamp01((WORLD_HALF_DEPTH - z) / WORLD_DEPTH) * (WORLD_HEIGHTMAP_HEIGHT - 1);
-  const ix = Math.round(u);
-  const iy = Math.round(v);
-  const index = iy * WORLD_HEIGHTMAP_WIDTH + ix;
-  const cells = WATER_DISTANCE_CELLS[index] ?? 0;
-  const worldUnitsPerCell = 0.5 * (
-    WORLD_WIDTH / (WORLD_HEIGHTMAP_WIDTH - 1)
-    + WORLD_DEPTH / (WORLD_HEIGHTMAP_HEIGHT - 1)
-  );
-  return cells * worldUnitsPerCell;
+  return distanceFieldAt(WATER_DISTANCE_CELLS, x, z);
 }
 
 function landDistanceAt(x: number, z: number): number {
-  const u = clamp01((x + WORLD_HALF_WIDTH) / WORLD_WIDTH) * (WORLD_HEIGHTMAP_WIDTH - 1);
-  const v = clamp01((WORLD_HALF_DEPTH - z) / WORLD_DEPTH) * (WORLD_HEIGHTMAP_HEIGHT - 1);
-  const ix = Math.round(u);
-  const iy = Math.round(v);
-  const index = iy * WORLD_HEIGHTMAP_WIDTH + ix;
-  const cells = LAND_DISTANCE_CELLS[index] ?? 0;
+  return distanceFieldAt(LAND_DISTANCE_CELLS, x, z);
+}
+
+function distanceFieldAt(field: Uint8Array, x: number, z: number): number {
+  const u = clamp01((x + WORLD_HALF_WIDTH) / WORLD_WIDTH) * (HEIGHTMAP_WIDTH - 1);
+  const v = clamp01((WORLD_HALF_DEPTH - z) / WORLD_DEPTH) * (HEIGHTMAP_HEIGHT - 1);
+  const x0 = Math.floor(u);
+  const y0 = Math.floor(v);
+  const x1 = Math.min(HEIGHTMAP_WIDTH - 1, x0 + 1);
+  const y1 = Math.min(HEIGHTMAP_HEIGHT - 1, y0 + 1);
+  const tx = u - x0;
+  const ty = v - y0;
+  const a = field[y0 * HEIGHTMAP_WIDTH + x0] ?? 0;
+  const b = field[y0 * HEIGHTMAP_WIDTH + x1] ?? 0;
+  const c = field[y1 * HEIGHTMAP_WIDTH + x0] ?? 0;
+  const d = field[y1 * HEIGHTMAP_WIDTH + x1] ?? 0;
+  const top = a + (b - a) * tx;
+  const bottom = c + (d - c) * tx;
+  const cells = top + (bottom - top) * ty;
   const worldUnitsPerCell = 0.5 * (
-    WORLD_WIDTH / (WORLD_HEIGHTMAP_WIDTH - 1)
-    + WORLD_DEPTH / (WORLD_HEIGHTMAP_HEIGHT - 1)
+    WORLD_WIDTH / (HEIGHTMAP_WIDTH - 1)
+    + WORLD_DEPTH / (HEIGHTMAP_HEIGHT - 1)
   );
   return cells * worldUnitsPerCell;
 }
 
 function heightByteAt(x: number, y: number): number {
-  return HEIGHT_BYTES[y * WORLD_HEIGHTMAP_WIDTH + x] ?? 0;
+  return HEIGHT_BYTES[y * HEIGHTMAP_WIDTH + x] ?? 0;
 }
 
 function createDistanceField(target: 'water' | 'land'): Uint8Array {
@@ -338,44 +349,44 @@ function createDistanceField(target: 'water' | 'land'): Uint8Array {
   const infinity = 1_000_000;
   const diagonal = Math.SQRT2;
 
-  for (let y = 0; y < WORLD_HEIGHTMAP_HEIGHT; y += 1) {
-    for (let x = 0; x < WORLD_HEIGHTMAP_WIDTH; x += 1) {
-      const index = y * WORLD_HEIGHTMAP_WIDTH + x;
+  for (let y = 0; y < HEIGHTMAP_HEIGHT; y += 1) {
+    for (let x = 0; x < HEIGHTMAP_WIDTH; x += 1) {
+      const index = y * HEIGHTMAP_WIDTH + x;
       const isWater = heightByteAt(x, y) <= thresholdByte;
       const isTarget = target === 'water' ? isWater : !isWater;
       distance[index] = isTarget ? 0 : infinity;
     }
   }
 
-  for (let y = 0; y < WORLD_HEIGHTMAP_HEIGHT; y += 1) {
-    for (let x = 0; x < WORLD_HEIGHTMAP_WIDTH; x += 1) {
-      const index = y * WORLD_HEIGHTMAP_WIDTH + x;
+  for (let y = 0; y < HEIGHTMAP_HEIGHT; y += 1) {
+    for (let x = 0; x < HEIGHTMAP_WIDTH; x += 1) {
+      const index = y * HEIGHTMAP_WIDTH + x;
       let best = distance[index] ?? infinity;
       if (x > 0) best = Math.min(best, (distance[index - 1] ?? infinity) + 1);
-      if (y > 0) best = Math.min(best, (distance[index - WORLD_HEIGHTMAP_WIDTH] ?? infinity) + 1);
+      if (y > 0) best = Math.min(best, (distance[index - HEIGHTMAP_WIDTH] ?? infinity) + 1);
       if (x > 0 && y > 0) {
-        best = Math.min(best, (distance[index - WORLD_HEIGHTMAP_WIDTH - 1] ?? infinity) + diagonal);
+        best = Math.min(best, (distance[index - HEIGHTMAP_WIDTH - 1] ?? infinity) + diagonal);
       }
-      if (x + 1 < WORLD_HEIGHTMAP_WIDTH && y > 0) {
-        best = Math.min(best, (distance[index - WORLD_HEIGHTMAP_WIDTH + 1] ?? infinity) + diagonal);
+      if (x + 1 < HEIGHTMAP_WIDTH && y > 0) {
+        best = Math.min(best, (distance[index - HEIGHTMAP_WIDTH + 1] ?? infinity) + diagonal);
       }
       distance[index] = best;
     }
   }
 
-  for (let y = WORLD_HEIGHTMAP_HEIGHT - 1; y >= 0; y -= 1) {
-    for (let x = WORLD_HEIGHTMAP_WIDTH - 1; x >= 0; x -= 1) {
-      const index = y * WORLD_HEIGHTMAP_WIDTH + x;
+  for (let y = HEIGHTMAP_HEIGHT - 1; y >= 0; y -= 1) {
+    for (let x = HEIGHTMAP_WIDTH - 1; x >= 0; x -= 1) {
+      const index = y * HEIGHTMAP_WIDTH + x;
       let best = distance[index] ?? infinity;
-      if (x + 1 < WORLD_HEIGHTMAP_WIDTH) best = Math.min(best, (distance[index + 1] ?? infinity) + 1);
-      if (y + 1 < WORLD_HEIGHTMAP_HEIGHT) {
-        best = Math.min(best, (distance[index + WORLD_HEIGHTMAP_WIDTH] ?? infinity) + 1);
+      if (x + 1 < HEIGHTMAP_WIDTH) best = Math.min(best, (distance[index + 1] ?? infinity) + 1);
+      if (y + 1 < HEIGHTMAP_HEIGHT) {
+        best = Math.min(best, (distance[index + HEIGHTMAP_WIDTH] ?? infinity) + 1);
       }
-      if (x + 1 < WORLD_HEIGHTMAP_WIDTH && y + 1 < WORLD_HEIGHTMAP_HEIGHT) {
-        best = Math.min(best, (distance[index + WORLD_HEIGHTMAP_WIDTH + 1] ?? infinity) + diagonal);
+      if (x + 1 < HEIGHTMAP_WIDTH && y + 1 < HEIGHTMAP_HEIGHT) {
+        best = Math.min(best, (distance[index + HEIGHTMAP_WIDTH + 1] ?? infinity) + diagonal);
       }
-      if (x > 0 && y + 1 < WORLD_HEIGHTMAP_HEIGHT) {
-        best = Math.min(best, (distance[index + WORLD_HEIGHTMAP_WIDTH - 1] ?? infinity) + diagonal);
+      if (x > 0 && y + 1 < HEIGHTMAP_HEIGHT) {
+        best = Math.min(best, (distance[index + HEIGHTMAP_WIDTH - 1] ?? infinity) + diagonal);
       }
       distance[index] = best;
     }
@@ -384,13 +395,6 @@ function createDistanceField(target: 'water' | 'land'): Uint8Array {
   const result = new Uint8Array(size);
   for (let i = 0; i < size; i += 1) result[i] = Math.min(255, Math.round(distance[i] ?? 0));
   return result;
-}
-
-function decodeBase64(value: string): Uint8Array {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return bytes;
 }
 
 function valueNoise(x: number, z: number): number {

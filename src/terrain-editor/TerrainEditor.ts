@@ -11,6 +11,13 @@ import {
   TOUCH_TILT_RESPONSE,
   TOUCH_ZOOM_RESPONSE,
 } from '../input/TouchGestureIntent';
+import {
+  clearWorldHeightmapOverride,
+  decodeHeightmapBase64,
+  readWorldHeightmapOverride,
+  sampleHeightmapBytesBilinear,
+  writeWorldHeightmapOverride,
+} from '../world/WorldHeightmapStore';
 import { createTerrainSurfaceMaterial } from '../world/rendering/TerrainSurfaceMaterial';
 import './terrain-editor.css';
 
@@ -65,6 +72,7 @@ export class TerrainEditor {
   private cameraDistance = 190;
   private previousSinglePointer: PointerState | null = null;
   private strokeSnapshotTaken = false;
+  private loadedSharedOverride = false;
   private readonly uiRoot: HTMLDivElement;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
@@ -128,17 +136,22 @@ export class TerrainEditor {
   }
 
   private seedFromCurrentWorld(): void {
-    const source = decodeBase64(WORLD_HEIGHTMAP_U8);
-    for (let y = 0; y < DATA_SIZE; y += 1) {
-      const v = y / (DATA_SIZE - 1);
-      for (let x = 0; x < DATA_SIZE; x += 1) {
-        const u = x / (DATA_SIZE - 1);
-        const value = bilinearSampleBytes(source, WORLD_HEIGHTMAP_WIDTH, WORLD_HEIGHTMAP_HEIGHT, u, v) / 255;
-        const index = y * DATA_SIZE + x;
-        this.heights[index] = value;
-        this.originalHeights[index] = value;
-      }
+    const authored = decodeHeightmapBase64(WORLD_HEIGHTMAP_U8);
+    fillResampledHeightmap(
+      this.originalHeights,
+      authored,
+      WORLD_HEIGHTMAP_WIDTH,
+      WORLD_HEIGHTMAP_HEIGHT,
+    );
+
+    const shared = readWorldHeightmapOverride();
+    this.loadedSharedOverride = shared !== null;
+    if (shared) {
+      fillResampledHeightmap(this.heights, shared.bytes, shared.width, shared.height);
+      return;
     }
+
+    this.heights.set(this.originalHeights);
   }
 
   private createTerrain(): THREE.Mesh {
@@ -202,6 +215,9 @@ export class TerrainEditor {
   private createUi(): HTMLDivElement {
     const root = document.createElement('div');
     root.className = 'terrain-editor-ui';
+    const initialStatus = this.loadedSharedOverride
+      ? 'THE WAR 공유 heightmap 불러옴 · 수정 시 자동 반영'
+      : '현재 맵 불러옴 · 수정 시 THE WAR에 자동 반영';
     root.innerHTML = `
       <div class="terrain-editor-topbar">
         <div class="terrain-editor-title">
@@ -251,11 +267,11 @@ export class TerrainEditor {
         <div class="terrain-editor-history">
           <button id="terrain-undo" type="button">되돌리기</button>
           <button id="terrain-redo" type="button">다시하기</button>
-          <span id="terrain-status">현재 맵 불러옴 · 257² height data</span>
+          <span id="terrain-status">${initialStatus}</span>
         </div>
       </div>
 
-      <div class="terrain-editor-hint">VIEW: 한 손가락 이동 · 핀치 줌 · 두 손가락 비틀기 회전 · 두 손가락 세로 드래그 기울기 · SCULPT: 한 손가락 지형 편집</div>
+      <div class="terrain-editor-hint">VIEW: 한 손가락 이동 · 핀치 줌 · 두 손가락 비틀기 회전 · 두 손가락 세로 드래그 기울기 · SCULPT: 한 손가락 지형 편집 · 편집 완료 시 THE WAR 자동 저장</div>
     `;
     return root;
   }
@@ -272,7 +288,9 @@ export class TerrainEditor {
       this.pushUndoSnapshot();
       this.heights.set(this.originalHeights);
       this.redoStack.length = 0;
-      this.markGeometryDirty('원본 heightmap으로 복원');
+      clearWorldHeightmapOverride();
+      this.loadedSharedOverride = false;
+      this.markGeometryDirty('원본 heightmap으로 복원 · THE WAR에도 반영됨');
     });
 
     this.uiRoot.querySelector('#terrain-export')?.addEventListener('click', () => this.exportHeightmap());
@@ -411,6 +429,7 @@ export class TerrainEditor {
   };
 
   private readonly onPointerUp = (event: PointerEvent): void => {
+    const shouldPersist = this.strokeSnapshotTaken;
     this.pointers.delete(event.pointerId);
     if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId);
 
@@ -422,6 +441,7 @@ export class TerrainEditor {
       this.touchGesture.reset();
     }
 
+    if (shouldPersist) this.persistWorldHeightmap('THE WAR에 자동 저장됨');
     this.strokeSnapshotTaken = false;
     if (this.pointers.size === 0 && this.mode === 'sculpt') this.brushRing.visible = false;
   };
@@ -626,7 +646,8 @@ export class TerrainEditor {
     if (!previous) return;
     this.redoStack.push(this.heights.slice());
     this.heights.set(previous);
-    this.markGeometryDirty('되돌림');
+    this.markGeometryDirty();
+    this.persistWorldHeightmap('되돌림 · THE WAR에 반영됨');
   }
 
   private redo(): void {
@@ -634,7 +655,8 @@ export class TerrainEditor {
     if (!next) return;
     this.undoStack.push(this.heights.slice());
     this.heights.set(next);
-    this.markGeometryDirty('다시 적용');
+    this.markGeometryDirty();
+    this.persistWorldHeightmap('다시 적용 · THE WAR에 반영됨');
   }
 
   private async loadHeightmap(file: File): Promise<void> {
@@ -656,20 +678,20 @@ export class TerrainEditor {
         const r = pixels[pixel] ?? 0;
         const g = pixels[pixel + 1] ?? 0;
         const b = pixels[pixel + 2] ?? 0;
-        const value = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
-        this.heights[i] = value;
-        this.originalHeights[i] = value;
+        this.heights[i] = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
       }
 
       this.undoStack.length = 0;
       this.redoStack.length = 0;
-      this.markGeometryDirty(`${file.name} · 257²로 작업 중`);
+      this.markGeometryDirty();
+      this.persistWorldHeightmap(`${file.name} · 257² · THE WAR에 반영됨`);
     } catch (error) {
       if (status) status.textContent = `불러오기 실패: ${error instanceof Error ? error.message : 'unknown error'}`;
     }
   }
 
   private exportHeightmap(): void {
+    this.persistWorldHeightmap();
     const surface = document.createElement('canvas');
     surface.width = DATA_SIZE;
     surface.height = DATA_SIZE;
@@ -688,8 +710,18 @@ export class TerrainEditor {
     surface.toBlob((blob) => {
       if (!blob) return;
       downloadBlob(blob, `the-war-heightmap-${Date.now()}.png`);
-      this.setStatus('PNG 저장 준비 완료');
+      this.setStatus('PNG 저장 준비 완료 · THE WAR 공유맵도 최신 상태');
     }, 'image/png');
+  }
+
+  private persistWorldHeightmap(status?: string): void {
+    const saved = writeWorldHeightmapOverride(this.heights, DATA_SIZE, DATA_SIZE);
+    if (saved) {
+      this.loadedSharedOverride = true;
+      if (status) this.setStatus(status);
+      return;
+    }
+    this.setStatus('THE WAR 저장 실패 · 브라우저 저장공간을 확인해줘');
   }
 
   private markGeometryDirty(status?: string): void {
@@ -746,33 +778,25 @@ export class TerrainEditor {
   }
 }
 
-function decodeBase64(value: string): Uint8Array {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
-
-function bilinearSampleBytes(
-  values: Uint8Array,
-  width: number,
-  height: number,
-  u: number,
-  v: number,
-): number {
-  const x = THREE.MathUtils.clamp(u, 0, 1) * (width - 1);
-  const y = THREE.MathUtils.clamp(v, 0, 1) * (height - 1);
-  const x0 = Math.floor(x);
-  const y0 = Math.floor(y);
-  const x1 = Math.min(width - 1, x0 + 1);
-  const y1 = Math.min(height - 1, y0 + 1);
-  const tx = x - x0;
-  const ty = y - y0;
-  const a = values[y0 * width + x0] ?? 0;
-  const b = values[y0 * width + x1] ?? 0;
-  const c = values[y1 * width + x0] ?? 0;
-  const d = values[y1 * width + x1] ?? 0;
-  return THREE.MathUtils.lerp(THREE.MathUtils.lerp(a, b, tx), THREE.MathUtils.lerp(c, d, tx), ty);
+function fillResampledHeightmap(
+  target: Float32Array,
+  source: Uint8Array,
+  sourceWidth: number,
+  sourceHeight: number,
+): void {
+  for (let y = 0; y < DATA_SIZE; y += 1) {
+    const v = y / (DATA_SIZE - 1);
+    for (let x = 0; x < DATA_SIZE; x += 1) {
+      const u = x / (DATA_SIZE - 1);
+      target[y * DATA_SIZE + x] = sampleHeightmapBytesBilinear(
+        source,
+        sourceWidth,
+        sourceHeight,
+        u,
+        v,
+      ) / 255;
+    }
+  }
 }
 
 function bilinearSampleFloat(

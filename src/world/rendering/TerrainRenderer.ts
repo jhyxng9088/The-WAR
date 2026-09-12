@@ -101,7 +101,7 @@ function createLand(): THREE.Mesh {
       detailRepeat: 32,
       roughness: 0.9,
       seaLevel: SEA_LEVEL,
-      controlMapSize: 256,
+      controlMapSize: 512,
       anisotropy: 4,
     }),
   );
