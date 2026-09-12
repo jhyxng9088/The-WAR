@@ -1,13 +1,13 @@
 import * as THREE from 'three';
-import { SLICE_HALF_DEPTH, SLICE_HALF_WIDTH } from '../world/vertical-slice/VerticalSliceAssets';
+import { WORLD_HALF_DEPTH, WORLD_HALF_WIDTH } from '../world/WorldField';
 
-const CAMERA_DIRECTION = new THREE.Vector3(0.34, 0.82, 0.46).normalize();
+const CAMERA_DIRECTION = new THREE.Vector3(0.3, 0.88, 0.38).normalize();
 const GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const FOV = 34;
-const DEFAULT_DISTANCE = 148;
-const MIN_DISTANCE = 55;
-const MAX_DISTANCE = 205;
-const EDGE_GUARD = 3;
+const DEFAULT_DISTANCE = 190;
+const MIN_DISTANCE = 62;
+const MAX_DISTANCE = 310;
+const EDGE_GUARD = 4;
 
 export interface SurfaceCoverage {
   width: number;
@@ -20,9 +20,9 @@ interface GroundHalfExtents {
 }
 
 export class WorldCamera {
-  readonly camera = new THREE.PerspectiveCamera(FOV, 16 / 9, 0.2, 680);
+  readonly camera = new THREE.PerspectiveCamera(FOV, 16 / 9, 0.2, 900);
 
-  private readonly target = new THREE.Vector3(0, 1.5, -5);
+  private readonly target = new THREE.Vector3(0, 1.5, -10);
   private readonly raycaster = new THREE.Raycaster();
   private distance = DEFAULT_DISTANCE;
 
@@ -32,28 +32,28 @@ export class WorldCamera {
 
   static requiredSurfaceCoverage(): SurfaceCoverage {
     return {
-      width: (SLICE_HALF_WIDTH + 108) * 2,
-      depth: (SLICE_HALF_DEPTH + 108) * 2,
+      width: (WORLD_HALF_WIDTH + 170) * 2,
+      depth: (WORLD_HALF_DEPTH + 170) * 2,
     };
   }
 
   resize(width: number, height: number): void {
     this.camera.aspect = width / Math.max(1, height);
     this.camera.updateProjectionMatrix();
-    this.clampTargetToSlice();
+    this.clampTargetToWorld();
   }
 
   panGround(delta: THREE.Vector3): void {
     this.target.x += delta.x;
     this.target.z += delta.z;
-    this.clampTargetToSlice();
+    this.clampTargetToWorld();
   }
 
   zoomBy(scale: number): void {
     if (!Number.isFinite(scale) || scale <= 0) return;
     this.distance = THREE.MathUtils.clamp(this.distance / scale, MIN_DISTANCE, MAX_DISTANCE);
     this.syncPosition();
-    this.clampTargetToSlice();
+    this.clampTargetToWorld();
   }
 
   groundPoint(clientX: number, clientY: number, rect: DOMRect): THREE.Vector3 | null {
@@ -67,11 +67,11 @@ export class WorldCamera {
     return this.raycaster.ray.intersectPlane(GROUND, point) ? point : null;
   }
 
-  private clampTargetToSlice(): void {
+  private clampTargetToWorld(): void {
     this.syncPosition();
     const extents = this.currentGroundHalfExtents();
-    const maxTargetX = Math.max(0, SLICE_HALF_WIDTH - extents.x - EDGE_GUARD);
-    const maxTargetZ = Math.max(0, SLICE_HALF_DEPTH - extents.z - EDGE_GUARD);
+    const maxTargetX = Math.max(0, WORLD_HALF_WIDTH - extents.x - EDGE_GUARD);
+    const maxTargetZ = Math.max(0, WORLD_HALF_DEPTH - extents.z - EDGE_GUARD);
     const nextX = THREE.MathUtils.clamp(this.target.x, -maxTargetX, maxTargetX);
     const nextZ = THREE.MathUtils.clamp(this.target.z, -maxTargetZ, maxTargetZ);
     if (nextX === this.target.x && nextZ === this.target.z) return;
