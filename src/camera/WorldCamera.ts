@@ -1,12 +1,15 @@
 import * as THREE from 'three';
 import { WORLD_HALF_DEPTH, WORLD_HALF_WIDTH } from '../world/WorldField';
 
-const CAMERA_DIRECTION = new THREE.Vector3(0.3, 0.88, 0.38).normalize();
 const GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const FOV = 34;
 const DEFAULT_DISTANCE = 190;
 const MIN_DISTANCE = 62;
 const MAX_DISTANCE = 310;
+const DEFAULT_YAW = 0.67;
+const DEFAULT_PITCH = 1.07;
+const MIN_PITCH = 0.48;
+const MAX_PITCH = 1.24;
 const EDGE_GUARD = 4;
 
 export interface SurfaceCoverage {
@@ -24,7 +27,10 @@ export class WorldCamera {
 
   private readonly target = new THREE.Vector3(0, 1.5, -10);
   private readonly raycaster = new THREE.Raycaster();
+  private readonly cameraDirection = new THREE.Vector3();
   private distance = DEFAULT_DISTANCE;
+  private yaw = DEFAULT_YAW;
+  private pitch = DEFAULT_PITCH;
 
   constructor() {
     this.syncPosition();
@@ -46,6 +52,14 @@ export class WorldCamera {
   panGround(delta: THREE.Vector3): void {
     this.target.x += delta.x;
     this.target.z += delta.z;
+    this.clampTargetToWorld();
+  }
+
+  rotateBy(yawDelta: number, pitchDelta: number): void {
+    if (!Number.isFinite(yawDelta) || !Number.isFinite(pitchDelta)) return;
+    this.yaw += yawDelta;
+    this.pitch = THREE.MathUtils.clamp(this.pitch + pitchDelta, MIN_PITCH, MAX_PITCH);
+    this.syncPosition();
     this.clampTargetToWorld();
   }
 
@@ -96,7 +110,13 @@ export class WorldCamera {
   }
 
   private syncPosition(): void {
-    this.camera.position.copy(this.target).addScaledVector(CAMERA_DIRECTION, this.distance);
+    const horizontal = Math.cos(this.pitch);
+    this.cameraDirection.set(
+      Math.sin(this.yaw) * horizontal,
+      Math.sin(this.pitch),
+      Math.cos(this.yaw) * horizontal,
+    ).normalize();
+    this.camera.position.copy(this.target).addScaledVector(this.cameraDirection, this.distance);
     this.camera.lookAt(this.target);
     this.camera.updateMatrixWorld(true);
   }
