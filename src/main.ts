@@ -9,11 +9,12 @@ if (!canvas) {
 }
 
 const isTerrainEditor = window.location.pathname.includes('/terrain-editor');
+installTouchPlatformGuards();
 
 if (isTerrainEditor) {
   document.documentElement.classList.add('terrain-editor-active');
   document.body.classList.add('terrain-editor-active');
-  installTerrainEditorPlatformGuards();
+  installTerrainEditorServiceWorker();
 
   const { TerrainEditor } = await import('./terrain-editor/TerrainEditor');
   const editor = new TerrainEditor(canvas);
@@ -34,22 +35,23 @@ function installSharedTerrainReload(): void {
   });
 }
 
-function installTerrainEditorPlatformGuards(): void {
+function installTouchPlatformGuards(): void {
   const blockNativeZoom: EventListener = (event) => event.preventDefault();
   const blockNativePinch = (event: TouchEvent): void => {
     if (event.touches.length > 1) event.preventDefault();
   };
 
-  // Safari can still invoke page-level gesture zoom outside the canvas even
-  // when the viewport meta tag and canvas touch-action are already locked.
-  // Keep those native gestures disabled while TerrainEditor owns its own
-  // two-pointer map zoom.
+  // iOS/iPadOS Safari may still start its native page gesture even with
+  // touch-action:none on the canvas. THE WAR and Terrain Lab both own their
+  // two-pointer camera gestures, so keep the browser from stealing them.
   for (const eventName of ['gesturestart', 'gesturechange', 'gestureend']) {
     document.addEventListener(eventName, blockNativeZoom, { passive: false });
   }
   document.addEventListener('touchmove', blockNativePinch, { passive: false });
   document.addEventListener('dblclick', blockNativeZoom, { passive: false });
+}
 
+function installTerrainEditorServiceWorker(): void {
   // The editor is installable as a standalone PWA. Keep runtime requests
   // network-first so a new GitHub Pages deploy cannot mix an old cached shell
   // with new hashed bundles.
