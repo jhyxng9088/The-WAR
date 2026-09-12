@@ -1,24 +1,20 @@
 import * as THREE from 'three';
 import { WorldCamera } from '../camera/WorldCamera';
+import {
+  TouchGestureIntent,
+  type TouchGestureSample,
+  TOUCH_ROTATE_RESPONSE,
+  TOUCH_TILT_RESPONSE,
+  TOUCH_ZOOM_RESPONSE,
+} from './TouchGestureIntent';
 
 type PointerState = { x: number; y: number };
 
-type TwoPointerGesture = {
-  centerX: number;
-  centerY: number;
-  distance: number;
-  angle: number;
-};
-
-const PINCH_RESPONSE = 1.0;
-const TWIST_RESPONSE = 1.0;
-const TILT_RESPONSE = 0.0022;
 const WHEEL_RESPONSE = 0.00135;
-const TILT_ZOOM_DEADZONE = 0.025;
-const TILT_TWIST_DEADZONE = 0.035;
 
 export class WorldInput {
   private readonly pointers = new Map<number, PointerState>();
+  private readonly touchGesture = new TouchGestureIntent();
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -43,6 +39,12 @@ export class WorldInput {
     event.preventDefault();
     this.canvas.setPointerCapture(event.pointerId);
     this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (this.pointers.size === 2) {
+      this.touchGesture.begin(this.getTwoPointerGesture());
+    } else if (this.pointers.size > 2) {
+      this.touchGesture.reset();
+    }
   };
 
   private readonly onPointerMove = (event: PointerEvent): void => {
@@ -60,45 +62,46 @@ export class WorldInput {
       return;
     }
 
-    if (this.pointers.size === 2) {
-      const previousGesture = this.getTwoPointerGesture();
-      this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-      const nextGesture = this.getTwoPointerGesture();
-      if (!previousGesture || !nextGesture) return;
+    this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (this.pointers.size !== 2) return;
 
-      const anchor = this.camera.groundPoint(previousGesture.centerX, previousGesture.centerY, rect);
-      const angleDelta = shortestAngle(nextGesture.angle - previousGesture.angle);
-      const ratio = previousGesture.distance > 0
-        ? nextGesture.distance / previousGesture.distance
-        : 1;
-      const zoomMotion = Math.abs(Math.log(Math.max(0.0001, ratio)));
-      const twistMotion = Math.abs(angleDelta);
-      const centerDy = nextGesture.centerY - previousGesture.centerY;
-      const pitchDelta = zoomMotion < TILT_ZOOM_DEADZONE && twistMotion < TILT_TWIST_DEADZONE
-        ? centerDy * TILT_RESPONSE
-        : 0;
+    const sample = this.getTwoPointerGesture();
+    if (!sample) return;
+    const delta = this.touchGesture.update(sample);
+    if (!delta) return;
 
-      if (Math.abs(angleDelta) > 0.0005 || Math.abs(pitchDelta) > 0.0005) {
-        this.camera.rotateBy(-angleDelta * TWIST_RESPONSE, pitchDelta);
-      }
-
-      if (Number.isFinite(ratio) && ratio > 0) {
-        this.camera.zoomBy(Math.pow(ratio, PINCH_RESPONSE));
-      }
-
+    if (delta.mode === 'zoom') {
+      const anchor = this.camera.groundPoint(sample.centerX, sample.centerY, rect);
+      this.camera.zoomBy(Math.pow(delta.scale, TOUCH_ZOOM_RESPONSE));
       if (anchor) {
-        const after = this.camera.groundPoint(nextGesture.centerX, nextGesture.centerY, rect);
+        const after = this.camera.groundPoint(sample.centerX, sample.centerY, rect);
         if (after) this.camera.panGround(anchor.sub(after));
       }
       return;
     }
 
-    this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (delta.mode === 'rotate') {
+      const anchor = this.camera.groundPoint(sample.centerX, sample.centerY, rect);
+      this.camera.rotateBy(-delta.angleDelta * TOUCH_ROTATE_RESPONSE, 0);
+      if (anchor) {
+        const after = this.camera.groundPoint(sample.centerX, sample.centerY, rect);
+        if (after) this.camera.panGround(anchor.sub(after));
+      }
+      return;
+    }
+
+    this.camera.rotateBy(0, delta.verticalDelta * TOUCH_TILT_RESPONSE);
   };
 
   private readonly onPointerUp = (event: PointerEvent): void => {
     this.pointers.delete(event.pointerId);
     if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId);
+
+    if (this.pointers.size === 2) {
+      this.touchGesture.begin(this.getTwoPointerGesture());
+    } else {
+      this.touchGesture.reset();
+    }
   };
 
   private readonly onWheel = (event: WheelEvent): void => {
@@ -113,7 +116,7 @@ export class WorldInput {
     if (after) this.camera.panGround(anchor.sub(after));
   };
 
-  private getTwoPointerGesture(): TwoPointerGesture | null {
+  private getTwoPointerGesture(): TouchGestureSample | null {
     const points = [...this.pointers.values()];
     const a = points[0];
     const b = points[1];
@@ -125,11 +128,4 @@ export class WorldInput {
       angle: Math.atan2(b.y - a.y, b.x - a.x),
     };
   }
-}
-
-function shortestAngle(value: number): number {
-  let angle = value;
-  while (angle > Math.PI) angle -= Math.PI * 2;
-  while (angle < -Math.PI) angle += Math.PI * 2;
-  return angle;
 }
