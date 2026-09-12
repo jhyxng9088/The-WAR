@@ -19,7 +19,6 @@ export function addTerrain(scene: THREE.Scene): void {
 }
 
 function createOcean(): THREE.Mesh {
-  // Water detail is fragment-driven, so a dense water grid would only waste vertices.
   const geometry = new THREE.PlaneGeometry(
     OCEAN_COVERAGE.width,
     OCEAN_COVERAGE.depth,
@@ -31,12 +30,12 @@ function createOcean(): THREE.Mesh {
 
   const material = createWorldWaterMaterial({
     controlMapSize: 512,
-    roughness: 0.36,
+    roughness: 0.48,
   });
 
   const mesh = new THREE.Mesh(geometry, material);
-  mesh.position.y = SEA_LEVEL;
-  mesh.renderOrder = -2;
+  mesh.position.y = SEA_LEVEL + 0.006;
+  mesh.renderOrder = 2;
   mesh.receiveShadow = true;
   mesh.onBeforeRender = () => {
     updateWorldWaterTime(material, performance.now() * 0.001);
