@@ -1,3 +1,15 @@
+html.terrain-editor-active,
+body.terrain-editor-active,
+body.terrain-editor-active #app,
+body.terrain-editor-active #game-canvas,
+body.terrain-editor-active .terrain-editor-ui,
+body.terrain-editor-active .terrain-editor-ui * {
+  touch-action: none;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 .terrain-editor-active .wordmark {
   display: none;
 }
