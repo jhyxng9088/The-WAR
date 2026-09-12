@@ -61,7 +61,7 @@ function createOcean(): THREE.Mesh {
     geometry,
     new THREE.MeshStandardMaterial({
       vertexColors: true,
-      roughness: 0.52,
+      roughness: 0.46,
       metalness: 0,
       dithering: true,
     }),
@@ -97,8 +97,9 @@ function createLand(): THREE.Mesh {
   const mesh = new THREE.Mesh(
     geometry,
     createWorldTerrainSurfaceMaterial({
-      detailRepeat: 38,
-      roughness: 0.86,
+      // Slightly larger world-space texels plus UV warping remove the old wallpaper stripes.
+      detailRepeat: 32,
+      roughness: 0.9,
       seaLevel: SEA_LEVEL,
       controlMapSize: 256,
       anisotropy: 4,
