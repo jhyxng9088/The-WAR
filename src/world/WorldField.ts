@@ -14,8 +14,8 @@ export const WORLD_WIDTH = 420;
 export const WORLD_DEPTH = 420;
 export const WORLD_HALF_WIDTH = WORLD_WIDTH / 2;
 export const WORLD_HALF_DEPTH = WORLD_DEPTH / 2;
-export const TERRAIN_SEGMENTS_X = 128;
-export const TERRAIN_SEGMENTS_Z = 128;
+export const TERRAIN_SEGMENTS_X = 256;
+export const TERRAIN_SEGMENTS_Z = 256;
 export const SEA_LEVEL = -0.5;
 
 export type XZ = readonly [number, number];
@@ -180,12 +180,16 @@ export function clamp01(value: number): number {
 function terrainHeightFromRawAt(x: number, z: number, raw: number): number {
   if (raw <= LAND_THRESHOLD) {
     const waterDepth = 1 - clamp01(raw / LAND_THRESHOLD);
-    return SEA_LEVEL - 0.24 - waterDepth * 2.3;
+    // Keep the lake/ocean bed close to the water plane at the shoreline, then
+    // deepen it progressively. The old +/-0.24 jump produced a visible cliff ring.
+    return SEA_LEVEL - 0.035 - waterDepth * 2.25;
   }
 
   const normalized = clamp01((raw - LAND_THRESHOLD) / (1 - LAND_THRESHOLD));
   const shaped = Math.pow(normalized, 1.14);
-  const baseHeight = SEA_LEVEL + 0.26 + shaped * MAX_LAND_HEIGHT;
+  // Land now begins only slightly above sea level so shoreline vertices meet the
+  // water surface naturally instead of stepping up by half a world unit.
+  const baseHeight = SEA_LEVEL + 0.045 + shaped * MAX_LAND_HEIGHT;
   const landInterior = smoothRange(raw, LAND_THRESHOLD + 0.012, 0.19);
   const strategicRelief = strategicMountainReliefAt(x, z, landInterior);
   return baseHeight + strategicRelief.height;
@@ -226,7 +230,7 @@ function moistureFromValues(
 function roughnessFromValues(x: number, z: number, height: number, raw: number): number {
   if (raw <= LAND_THRESHOLD) return 0;
 
-  // Keep the slope sampling footprint stable across authored 65² and Terrain Lab 257² data.
+  // Keep the slope sampling footprint stable across authored and Terrain Lab data.
   const gradient = heightGradientAt(x, z);
   const slope = smoothRange(gradient, 0.012, 0.086);
   const elevation = smoothRange(height, 4.8, 13.8);
@@ -281,7 +285,7 @@ function biomeFromValues(
 }
 
 function heightGradientAt(x: number, z: number): number {
-  const step = WORLD_WIDTH / (WORLD_HEIGHTMAP_WIDTH - 1);
+  const step = WORLD_WIDTH / (HEIGHTMAP_WIDTH - 1);
   const dx = heightmapValueAt(x + step, z) - heightmapValueAt(x - step, z);
   const dz = heightmapValueAt(x, z + step) - heightmapValueAt(x, z - step);
   return Math.hypot(dx, dz) * 0.5;
