@@ -45,6 +45,7 @@ export class Game {
   start(): void {
     if (this.frameId !== null) return;
     const render = (timestamp: number): void => {
+      this.input.update();
       this.performance.sample(timestamp);
       this.renderer.render(this.scene, this.camera.camera);
       this.frameId = requestAnimationFrame(render);
