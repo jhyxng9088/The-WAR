@@ -73,7 +73,10 @@ body.terrain-editor-active .terrain-editor-ui * {
 
 .terrain-editor-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 7px;
+  max-width: min(760px, 76vw);
   padding: 6px;
   border-radius: 15px;
   pointer-events: auto;
@@ -246,10 +249,21 @@ body.terrain-editor-active .terrain-editor-ui * {
   }
 
   .terrain-editor-actions {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    max-width: calc(100vw - 182px);
     margin-left: auto;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .terrain-editor-actions::-webkit-scrollbar {
+    display: none;
   }
 
   .terrain-editor-button {
+    flex: 0 0 auto;
     min-height: 34px;
     padding: 0 9px;
     font-size: 11px;
