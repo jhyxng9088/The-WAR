@@ -10,7 +10,7 @@ import {
 } from './WorldField';
 
 interface CanonicalWorldMapRow {
-  version: number;
+  version: number | string;
   width: number;
   height: number;
   encoding: string;
@@ -64,13 +64,14 @@ export async function loadCanonicalWorldMap(): Promise<CanonicalWorldMap | null>
     throw new Error(`Invalid canonical world map dimensions: ${row.width}x${row.height}`);
   }
 
+  const version = parseWorldMapVersion(row.version);
   const bytes = decodeHeightmapBase64(row.data);
   if (bytes.length !== row.width * row.height) {
     throw new Error(`Canonical world map payload mismatch: ${bytes.length} samples.`);
   }
 
   return {
-    version: Number(row.version),
+    version,
     width: row.width,
     height: row.height,
     bytes,
@@ -97,16 +98,25 @@ export async function publishCanonicalWorldMap(
 
   if (error) throw new Error(error.message);
   const row = Array.isArray(data) ? data[0] : data;
-  if (!row || typeof row.version !== 'number' || typeof row.updated_at !== 'string') {
+  if (!row || typeof row.updated_at !== 'string') {
     throw new Error('Supabase returned an invalid publish response.');
   }
 
+  const version = parseWorldMapVersion(row.version as unknown);
   applyWorldHeightmapSource(bytes, width, height);
-  return { version: row.version, updatedAt: row.updated_at };
+  return { version, updatedAt: row.updated_at };
 }
 
 export async function isWorldMapEditor(): Promise<boolean> {
   const { data, error } = await supabase.rpc('is_world_map_editor');
   if (error) return false;
   return data === true;
+}
+
+function parseWorldMapVersion(value: unknown): number {
+  const version = typeof value === 'number' || typeof value === 'string' ? Number(value) : Number.NaN;
+  if (!Number.isSafeInteger(version) || version < 1) {
+    throw new Error(`Invalid canonical world map version: ${String(value)}`);
+  }
+  return version;
 }
