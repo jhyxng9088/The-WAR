@@ -1,10 +1,8 @@
-import * as THREE from 'three';
 import { WorldCamera } from '../camera/WorldCamera';
 import {
   TouchGestureIntent,
   type TouchGestureSample,
   TOUCH_ROTATE_RESPONSE,
-  TOUCH_TILT_RESPONSE,
   TOUCH_ZOOM_RESPONSE,
 } from './TouchGestureIntent';
 
@@ -55,10 +53,10 @@ export class WorldInput {
     const rect = this.canvas.getBoundingClientRect();
 
     if (this.pointers.size === 1) {
-      const before = this.camera.groundPoint(previousPointer.x, previousPointer.y, rect);
-      const after = this.camera.groundPoint(event.clientX, event.clientY, rect);
+      const deltaX = event.clientX - previousPointer.x;
+      const deltaY = event.clientY - previousPointer.y;
       this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-      if (before && after) this.camera.panGround(before.sub(after));
+      this.camera.panScreen(deltaX, deltaY, rect.height);
       return;
     }
 
@@ -87,10 +85,7 @@ export class WorldInput {
         const after = this.camera.groundPoint(sample.centerX, sample.centerY, rect);
         if (after) this.camera.panGround(anchor.sub(after));
       }
-      return;
     }
-
-    this.camera.rotateBy(0, delta.verticalDelta * TOUCH_TILT_RESPONSE);
   };
 
   private readonly onPointerUp = (event: PointerEvent): void => {

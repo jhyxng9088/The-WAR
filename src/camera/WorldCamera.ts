@@ -4,30 +4,27 @@ import { WORLD_HALF_DEPTH, WORLD_HALF_WIDTH } from '../world/WorldField';
 const GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const FOV = 34;
 const DEFAULT_DISTANCE = 190;
-const MIN_DISTANCE = 62;
-const MAX_DISTANCE = 310;
+const MIN_DISTANCE = 52;
+const MAX_DISTANCE = 380;
 const DEFAULT_YAW = 0.67;
 const DEFAULT_PITCH = 1.07;
 const MIN_PITCH = 0.48;
 const MAX_PITCH = 1.24;
-const EDGE_GUARD = 4;
+const PAN_OVERSCAN = 96;
 
 export interface SurfaceCoverage {
   width: number;
   depth: number;
 }
 
-interface GroundHalfExtents {
-  x: number;
-  z: number;
-}
-
 export class WorldCamera {
-  readonly camera = new THREE.PerspectiveCamera(FOV, 16 / 9, 0.2, 900);
+  readonly camera = new THREE.PerspectiveCamera(FOV, 16 / 9, 0.2, 980);
 
   private readonly target = new THREE.Vector3(0, 1.5, -10);
   private readonly raycaster = new THREE.Raycaster();
   private readonly cameraDirection = new THREE.Vector3();
+  private readonly panRight = new THREE.Vector3();
+  private readonly panForward = new THREE.Vector3();
   private distance = DEFAULT_DISTANCE;
   private yaw = DEFAULT_YAW;
   private pitch = DEFAULT_PITCH;
@@ -38,8 +35,8 @@ export class WorldCamera {
 
   static requiredSurfaceCoverage(): SurfaceCoverage {
     return {
-      width: (WORLD_HALF_WIDTH + 170) * 2,
-      depth: (WORLD_HALF_DEPTH + 170) * 2,
+      width: (WORLD_HALF_WIDTH + 270) * 2,
+      depth: (WORLD_HALF_DEPTH + 270) * 2,
     };
   }
 
@@ -52,6 +49,23 @@ export class WorldCamera {
   panGround(delta: THREE.Vector3): void {
     this.target.x += delta.x;
     this.target.z += delta.z;
+    this.clampTargetToWorld();
+  }
+
+  panScreen(deltaX: number, deltaY: number, viewportHeight: number): void {
+    if (!Number.isFinite(deltaX) || !Number.isFinite(deltaY) || viewportHeight <= 0) return;
+
+    const radians = THREE.MathUtils.degToRad(FOV * 0.5);
+    const worldPerPixel = (
+      2 * this.distance * Math.tan(radians)
+      / viewportHeight
+      / Math.max(0.42, Math.sin(this.pitch))
+    );
+
+    this.panRight.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+    this.panForward.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+    this.target.addScaledVector(this.panRight, -deltaX * worldPerPixel);
+    this.target.addScaledVector(this.panForward, deltaY * worldPerPixel);
     this.clampTargetToWorld();
   }
 
@@ -82,31 +96,17 @@ export class WorldCamera {
   }
 
   private clampTargetToWorld(): void {
-    this.syncPosition();
-    const extents = this.currentGroundHalfExtents();
-    const maxTargetX = Math.max(0, WORLD_HALF_WIDTH - extents.x - EDGE_GUARD);
-    const maxTargetZ = Math.max(0, WORLD_HALF_DEPTH - extents.z - EDGE_GUARD);
+    const maxTargetX = WORLD_HALF_WIDTH + PAN_OVERSCAN;
+    const maxTargetZ = WORLD_HALF_DEPTH + PAN_OVERSCAN;
     const nextX = THREE.MathUtils.clamp(this.target.x, -maxTargetX, maxTargetX);
     const nextZ = THREE.MathUtils.clamp(this.target.z, -maxTargetZ, maxTargetZ);
-    if (nextX === this.target.x && nextZ === this.target.z) return;
+    if (nextX === this.target.x && nextZ === this.target.z) {
+      this.syncPosition();
+      return;
+    }
     this.target.x = nextX;
     this.target.z = nextZ;
     this.syncPosition();
-  }
-
-  private currentGroundHalfExtents(): GroundHalfExtents {
-    let halfX = 0;
-    let halfZ = 0;
-    for (const ndcX of [-1, 1]) {
-      for (const ndcY of [-1, 1]) {
-        this.raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), this.camera);
-        const point = this.raycaster.ray.intersectPlane(GROUND, new THREE.Vector3());
-        if (!point) continue;
-        halfX = Math.max(halfX, Math.abs(point.x - this.target.x));
-        halfZ = Math.max(halfZ, Math.abs(point.z - this.target.z));
-      }
-    }
-    return { x: halfX, z: halfZ };
   }
 
   private syncPosition(): void {
