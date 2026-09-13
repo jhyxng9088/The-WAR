@@ -8,6 +8,7 @@ if (!canvas) {
   throw new Error('THE WAR canvas was not found.');
 }
 
+const gameCanvas = canvas;
 const isTerrainEditorRoute = window.location.pathname.includes('/terrain-editor');
 const isTerrainEditor = isTerrainEditorRoute && !new URLSearchParams(window.location.search).has('play');
 installTouchPlatformGuards();
@@ -18,13 +19,13 @@ if (isTerrainEditor) {
   installTerrainEditorServiceWorker();
 
   const { TerrainEditor } = await import('./terrain-editor/TerrainEditor');
-  const editor = new TerrainEditor(canvas);
+  const editor = new TerrainEditor(gameCanvas);
   installTerrainEditorGameLink(editor);
   editor.start();
 } else {
   if (isTerrainEditorRoute) installTerrainEditorServiceWorker();
   installSharedTerrainReload();
-  const game = new Game(canvas);
+  const game = new Game(gameCanvas);
   game.start();
 }
 
@@ -60,7 +61,7 @@ function installTerrainEditorGameLink(editor: TerrainEditorPreviewController): v
     window.history.replaceState(null, '', playUrl.href);
 
     installSharedTerrainReload();
-    const game = new Game(canvas);
+    const game = new Game(gameCanvas);
     game.start();
   });
   actions.prepend(button);
