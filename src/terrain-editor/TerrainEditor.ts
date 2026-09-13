@@ -1,16 +1,10 @@
 import * as THREE from 'three';
+import { MapControls } from 'three/addons/controls/MapControls.js';
 import {
   WORLD_HEIGHTMAP_HEIGHT,
   WORLD_HEIGHTMAP_U8,
   WORLD_HEIGHTMAP_WIDTH,
 } from '../assets/world/AuthoredWorldHeightmap';
-import {
-  TouchGestureIntent,
-  type TouchGestureSample,
-  TOUCH_ROTATE_RESPONSE,
-  TOUCH_TILT_RESPONSE,
-  TOUCH_ZOOM_RESPONSE,
-} from '../input/TouchGestureIntent';
 import {
   SEA_LEVEL,
   TERRAIN_SEGMENTS_X,
@@ -38,32 +32,29 @@ import './terrain-editor.css';
 type EditorMode = 'view' | 'sculpt';
 type SculptTool = 'raise' | 'lower' | 'smooth' | 'flatten';
 
-interface PointerState {
-  x: number;
-  y: number;
-}
-
 const DATA_SIZE = 257;
-const MIN_CAMERA_DISTANCE = 78;
-const MAX_CAMERA_DISTANCE = 780;
-const MIN_CAMERA_PITCH = 0.48;
-const MAX_CAMERA_PITCH = 1.24;
 const MAX_UNDO = 18;
-const VIEW_GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), -SEA_LEVEL);
+const DEFAULT_CAMERA_DISTANCE = 360;
+const DEFAULT_CAMERA_YAW = 0.67;
+const DEFAULT_CAMERA_PITCH = 1.07;
+const VIEW_MIN_DISTANCE = 30;
+const VIEW_MAX_DISTANCE = 520;
+const VIEW_MIN_POLAR_ANGLE = 0.3;
+const VIEW_MAX_POLAR_ANGLE = 0.9;
+const VIEW_MAX_TARGET_RADIUS = 560;
+const WATER_OVERSCAN = 720;
 
 export class TerrainEditor {
   private readonly scene = new THREE.Scene();
   private readonly renderer: THREE.WebGLRenderer;
   private readonly camera = new THREE.PerspectiveCamera(34, 16 / 9, 0.2, 1400);
-  private readonly target = new THREE.Vector3(0, 0, 0);
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointerNdc = new THREE.Vector2();
   private readonly heights = new Float32Array(DATA_SIZE * DATA_SIZE);
   private readonly originalHeights = new Float32Array(DATA_SIZE * DATA_SIZE);
   private readonly undoStack: Float32Array[] = [];
   private readonly redoStack: Float32Array[] = [];
-  private readonly pointers = new Map<number, PointerState>();
-  private readonly touchGesture = new TouchGestureIntent();
+  private readonly viewControls: MapControls;
 
   private terrain: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>;
   private water: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>;
@@ -76,10 +67,7 @@ export class TerrainEditor {
   private brushRadius = 12;
   private brushStrength = 0.022;
   private flattenTarget = 0.5;
-  private cameraYaw = 0.67;
-  private cameraPitch = 1.07;
-  private cameraDistance = 360;
-  private previousSinglePointer: PointerState | null = null;
+  private activeSculptPointerId: number | null = null;
   private strokeSnapshotTaken = false;
   private loadedSharedOverride = false;
   private readonly uiRoot: HTMLDivElement;
@@ -107,7 +95,9 @@ export class TerrainEditor {
     this.brushRing = this.createBrushRing();
     this.scene.add(this.terrain, this.water, this.brushRing);
     addWorldLighting(this.scene);
-    this.syncCamera();
+
+    this.positionInitialCamera();
+    this.viewControls = this.createViewControls();
 
     this.uiRoot = this.createUi();
     document.querySelector('#app')?.appendChild(this.uiRoot);
@@ -138,6 +128,7 @@ export class TerrainEditor {
     if (this.resizeFrameId !== null) cancelAnimationFrame(this.resizeFrameId);
     this.frameId = null;
     this.resizeFrameId = null;
+    this.viewControls.dispose();
     this.unbindInput();
     window.removeEventListener('resize', this.queueResize);
     window.removeEventListener('orientationchange', this.queueResize);
@@ -197,7 +188,12 @@ export class TerrainEditor {
   }
 
   private createWater(): THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial> {
-    const geometry = new THREE.PlaneGeometry(WORLD_WIDTH * 1.08, WORLD_DEPTH * 1.08, 1, 1);
+    const geometry = new THREE.PlaneGeometry(
+      WORLD_WIDTH + WATER_OVERSCAN * 2,
+      WORLD_DEPTH + WATER_OVERSCAN * 2,
+      1,
+      1,
+    );
     geometry.rotateX(-Math.PI / 2);
     const material = this.createWaterMaterial();
     const mesh = new THREE.Mesh(geometry, material);
@@ -228,6 +224,39 @@ export class TerrainEditor {
     mesh.visible = false;
     mesh.renderOrder = 12;
     return mesh;
+  }
+
+  private positionInitialCamera(): void {
+    const horizontal = Math.cos(DEFAULT_CAMERA_PITCH) * DEFAULT_CAMERA_DISTANCE;
+    this.camera.position.set(
+      Math.sin(DEFAULT_CAMERA_YAW) * horizontal,
+      Math.sin(DEFAULT_CAMERA_PITCH) * DEFAULT_CAMERA_DISTANCE,
+      Math.cos(DEFAULT_CAMERA_YAW) * horizontal,
+    );
+    this.camera.lookAt(0, 0, 0);
+    this.camera.updateMatrixWorld(true);
+  }
+
+  private createViewControls(): MapControls {
+    const controls = new MapControls(this.camera, this.canvas);
+    controls.target.set(0, 0, 0);
+    controls.cursor.set(0, 0, 0);
+    controls.touches.ONE = THREE.TOUCH.PAN;
+    controls.touches.TWO = THREE.TOUCH.DOLLY_ROTATE;
+    controls.screenSpacePanning = false;
+    controls.zoomToCursor = true;
+    controls.enableDamping = false;
+    controls.minDistance = VIEW_MIN_DISTANCE;
+    controls.maxDistance = VIEW_MAX_DISTANCE;
+    controls.minPolarAngle = VIEW_MIN_POLAR_ANGLE;
+    controls.maxPolarAngle = VIEW_MAX_POLAR_ANGLE;
+    controls.maxTargetRadius = VIEW_MAX_TARGET_RADIUS;
+    controls.panSpeed = 1.0;
+    controls.zoomSpeed = 0.9;
+    controls.rotateSpeed = 0.65;
+    controls.enabled = false;
+    controls.update();
+    return controls;
   }
 
   private createUi(): HTMLDivElement {
@@ -281,7 +310,7 @@ export class TerrainEditor {
         </div>
       </div>
 
-      <div class="terrain-editor-hint">THE WAR와 같은 420×420 WorldField · 같은 257² 높이 그리드 · 같은 해수면/전략 산맥 · 편집 완료 시 자동 저장</div>
+      <div class="terrain-editor-hint">VIEW: 한 손가락 이동 · 두 손가락 회전 · 핀치 확대/축소 · SCULPT: 한 손가락 지형 편집</div>
     `;
     return root;
   }
@@ -313,8 +342,7 @@ export class TerrainEditor {
       button.addEventListener('click', () => {
         const mode = button.dataset.mode;
         if (mode !== 'view' && mode !== 'sculpt') return;
-        this.mode = mode;
-        this.brushRing.visible = false;
+        this.setMode(mode);
         this.uiRoot.querySelectorAll('[data-mode]').forEach((item) => item.classList.toggle('is-active', item === button));
       });
     });
@@ -324,7 +352,7 @@ export class TerrainEditor {
         const tool = button.dataset.tool;
         if (tool !== 'raise' && tool !== 'lower' && tool !== 'smooth' && tool !== 'flatten') return;
         this.tool = tool;
-        this.mode = 'sculpt';
+        this.setMode('sculpt');
         this.uiRoot.querySelectorAll('[data-tool]').forEach((item) => item.classList.toggle('is-active', item === button));
         this.uiRoot.querySelectorAll('[data-mode]').forEach((item) => item.classList.toggle('is-active', (item as HTMLElement).dataset.mode === 'sculpt'));
       });
@@ -339,6 +367,13 @@ export class TerrainEditor {
       this.brushStrength = value / 1000;
       return value.toFixed(0);
     });
+  }
+
+  private setMode(mode: EditorMode): void {
+    this.mode = mode;
+    this.viewControls.enabled = mode === 'view';
+    this.brushRing.visible = false;
+    if (mode === 'view') this.activeSculptPointerId = null;
   }
 
   private bindRange(
@@ -362,7 +397,6 @@ export class TerrainEditor {
     this.canvas.addEventListener('pointerup', this.onPointerUp);
     this.canvas.addEventListener('pointercancel', this.onPointerUp);
     this.canvas.addEventListener('contextmenu', this.preventContextMenu);
-    this.canvas.addEventListener('wheel', this.onWheel, { passive: false });
   }
 
   private unbindInput(): void {
@@ -371,180 +405,61 @@ export class TerrainEditor {
     this.canvas.removeEventListener('pointerup', this.onPointerUp);
     this.canvas.removeEventListener('pointercancel', this.onPointerUp);
     this.canvas.removeEventListener('contextmenu', this.preventContextMenu);
-    this.canvas.removeEventListener('wheel', this.onWheel);
   }
 
   private readonly preventContextMenu = (event: Event): void => event.preventDefault();
 
   private readonly onPointerDown = (event: PointerEvent): void => {
-    event.preventDefault();
-    this.canvas.setPointerCapture(event.pointerId);
-    this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    this.previousSinglePointer = { x: event.clientX, y: event.clientY };
-    this.strokeSnapshotTaken = false;
+    if (this.mode !== 'sculpt' || this.activeSculptPointerId !== null) return;
 
-    if (this.pointers.size === 2) {
-      this.touchGesture.begin(this.currentViewGesture());
-    } else if (this.pointers.size > 2) {
-      this.touchGesture.reset();
+    event.preventDefault();
+    this.activeSculptPointerId = event.pointerId;
+    this.strokeSnapshotTaken = false;
+    this.canvas.setPointerCapture(event.pointerId);
+
+    const hit = this.terrainPoint(event.clientX, event.clientY);
+    if (!hit) return;
+    this.flattenTarget = this.normalizedHeightAtWorld(hit.x, hit.z);
+    this.beginStroke();
+    this.applyBrush(hit.x, hit.z);
+  };
+
+  private readonly onPointerMove = (event: PointerEvent): void => {
+    if (this.mode !== 'sculpt') {
+      this.brushRing.visible = false;
+      return;
     }
 
-    if (this.mode === 'sculpt' && this.pointers.size === 1) {
-      const hit = this.terrainPoint(event.clientX, event.clientY);
-      if (!hit) return;
-      this.flattenTarget = this.normalizedHeightAtWorld(hit.x, hit.z);
+    if (this.activeSculptPointerId !== null && event.pointerId !== this.activeSculptPointerId) return;
+
+    const hit = this.terrainPoint(event.clientX, event.clientY);
+    if (!hit) {
+      this.brushRing.visible = false;
+      return;
+    }
+
+    this.brushRing.visible = true;
+    this.brushRing.position.set(hit.x, hit.y + 0.12, hit.z);
+    this.brushRing.scale.setScalar(this.brushRadius);
+
+    if (this.activeSculptPointerId === event.pointerId) {
+      event.preventDefault();
       this.beginStroke();
       this.applyBrush(hit.x, hit.z);
     }
   };
 
-  private readonly onPointerMove = (event: PointerEvent): void => {
-    if (this.pointers.has(event.pointerId)) {
-      this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    }
-
-    if (this.mode === 'sculpt' && this.pointers.size <= 1) {
-      const hit = this.terrainPoint(event.clientX, event.clientY);
-      if (hit) {
-        this.brushRing.visible = true;
-        this.brushRing.position.set(hit.x, hit.y + 0.12, hit.z);
-        this.brushRing.scale.setScalar(this.brushRadius);
-        if ((event.buttons & 1) !== 0 || event.pointerType === 'touch') {
-          if (this.pointers.has(event.pointerId)) {
-            this.beginStroke();
-            this.applyBrush(hit.x, hit.z);
-          }
-        }
-      } else {
-        this.brushRing.visible = false;
-      }
-      return;
-    }
-
-    this.brushRing.visible = false;
-    if (this.pointers.size === 2) {
-      this.handleTwoPointerView();
-      return;
-    }
-
-    if (this.mode === 'view' && this.pointers.size === 1) {
-      this.handleSinglePointerView(event.clientX, event.clientY);
-    }
-  };
-
   private readonly onPointerUp = (event: PointerEvent): void => {
-    const shouldPersist = this.strokeSnapshotTaken;
-    this.pointers.delete(event.pointerId);
-    if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId);
+    if (this.activeSculptPointerId !== event.pointerId) return;
 
-    const remaining = Array.from(this.pointers.values());
-    this.previousSinglePointer = remaining[0] ? { ...remaining[0] } : null;
-    if (this.pointers.size === 2) {
-      this.touchGesture.begin(this.currentViewGesture());
-    } else {
-      this.touchGesture.reset();
-    }
+    const shouldPersist = this.strokeSnapshotTaken;
+    if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId);
+    this.activeSculptPointerId = null;
 
     if (shouldPersist) this.persistWorldHeightmap('WorldField 저장 완료 · THE WAR와 동일');
     this.strokeSnapshotTaken = false;
-    if (this.pointers.size === 0 && this.mode === 'sculpt') this.brushRing.visible = false;
+    this.brushRing.visible = false;
   };
-
-  private readonly onWheel = (event: WheelEvent): void => {
-    event.preventDefault();
-    const anchor = this.viewGroundPoint(event.clientX, event.clientY);
-    this.cameraDistance = THREE.MathUtils.clamp(
-      this.cameraDistance * Math.exp(event.deltaY * 0.0012),
-      MIN_CAMERA_DISTANCE,
-      MAX_CAMERA_DISTANCE,
-    );
-    this.syncCamera();
-    if (!anchor) return;
-    const after = this.viewGroundPoint(event.clientX, event.clientY);
-    if (after) {
-      this.target.x += anchor.x - after.x;
-      this.target.z += anchor.z - after.z;
-      this.clampTarget();
-      this.syncCamera();
-    }
-  };
-
-  private handleSinglePointerView(clientX: number, clientY: number): void {
-    const previous = this.previousSinglePointer;
-    this.previousSinglePointer = { x: clientX, y: clientY };
-    if (!previous) return;
-
-    const before = this.viewGroundPoint(previous.x, previous.y);
-    const after = this.viewGroundPoint(clientX, clientY);
-    if (!before || !after) return;
-    this.target.x += before.x - after.x;
-    this.target.z += before.z - after.z;
-    this.clampTarget();
-    this.syncCamera();
-  }
-
-  private handleTwoPointerView(): void {
-    const sample = this.currentViewGesture();
-    if (!sample) return;
-    const delta = this.touchGesture.update(sample);
-    if (!delta) return;
-
-    if (delta.mode === 'zoom') {
-      const anchor = this.viewGroundPoint(sample.centerX, sample.centerY);
-      this.cameraDistance = THREE.MathUtils.clamp(
-        this.cameraDistance / Math.pow(delta.scale, TOUCH_ZOOM_RESPONSE),
-        MIN_CAMERA_DISTANCE,
-        MAX_CAMERA_DISTANCE,
-      );
-      this.syncCamera();
-      if (anchor) {
-        const after = this.viewGroundPoint(sample.centerX, sample.centerY);
-        if (after) {
-          this.target.x += anchor.x - after.x;
-          this.target.z += anchor.z - after.z;
-          this.clampTarget();
-          this.syncCamera();
-        }
-      }
-      return;
-    }
-
-    if (delta.mode === 'rotate') {
-      const anchor = this.viewGroundPoint(sample.centerX, sample.centerY);
-      this.cameraYaw -= delta.angleDelta * TOUCH_ROTATE_RESPONSE;
-      this.syncCamera();
-      if (anchor) {
-        const after = this.viewGroundPoint(sample.centerX, sample.centerY);
-        if (after) {
-          this.target.x += anchor.x - after.x;
-          this.target.z += anchor.z - after.z;
-          this.clampTarget();
-          this.syncCamera();
-        }
-      }
-      return;
-    }
-
-    this.cameraPitch = THREE.MathUtils.clamp(
-      this.cameraPitch + delta.verticalDelta * TOUCH_TILT_RESPONSE,
-      MIN_CAMERA_PITCH,
-      MAX_CAMERA_PITCH,
-    );
-    this.syncCamera();
-  }
-
-  private currentViewGesture(): TouchGestureSample | null {
-    const points = Array.from(this.pointers.values());
-    const a = points[0];
-    const b = points[1];
-    if (!a || !b) return null;
-    return {
-      centerX: (a.x + b.x) * 0.5,
-      centerY: (a.y + b.y) * 0.5,
-      distance: Math.hypot(a.x - b.x, a.y - b.y),
-      angle: Math.atan2(b.y - a.y, b.x - a.x),
-    };
-  }
 
   private beginStroke(): void {
     if (this.strokeSnapshotTaken) return;
@@ -612,30 +527,6 @@ export class TerrainEditor {
     this.raycaster.setFromCamera(this.pointerNdc, this.camera);
     const hit = this.raycaster.intersectObject(this.terrain, false)[0];
     return hit?.point ?? null;
-  }
-
-  private viewGroundPoint(clientX: number, clientY: number): THREE.Vector3 | null {
-    const rect = this.canvas.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return null;
-    this.pointerNdc.set(
-      ((clientX - rect.left) / rect.width) * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1,
-    );
-    this.raycaster.setFromCamera(this.pointerNdc, this.camera);
-    return this.raycaster.ray.intersectPlane(VIEW_GROUND, new THREE.Vector3());
-  }
-
-  private clampTarget(): void {
-    this.target.x = THREE.MathUtils.clamp(
-      this.target.x,
-      -WORLD_HALF_WIDTH * 0.9,
-      WORLD_HALF_WIDTH * 0.9,
-    );
-    this.target.z = THREE.MathUtils.clamp(
-      this.target.z,
-      -WORLD_HALF_DEPTH * 0.9,
-      WORLD_HALF_DEPTH * 0.9,
-    );
   }
 
   private normalizedHeightAtWorld(x: number, z: number): number {
@@ -780,16 +671,6 @@ export class TerrainEditor {
 
   private heightAtIndex(index: number): number {
     return this.heights[index] ?? 0;
-  }
-
-  private syncCamera(): void {
-    const horizontal = Math.cos(this.cameraPitch) * this.cameraDistance;
-    const y = Math.sin(this.cameraPitch) * this.cameraDistance;
-    const x = Math.sin(this.cameraYaw) * horizontal;
-    const z = Math.cos(this.cameraYaw) * horizontal;
-    this.camera.position.set(this.target.x + x, this.target.y + y, this.target.z + z);
-    this.camera.lookAt(this.target);
-    this.camera.updateMatrixWorld(true);
   }
 
   private readonly queueResize = (): void => {
