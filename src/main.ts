@@ -1,6 +1,6 @@
 import './styles.css';
 import { Game } from './core/Game';
-import { WORLD_HEIGHTMAP_STORAGE_KEY } from './world/WorldHeightmapStore';
+import { hydrateCanonicalWorldMap } from './world/WorldMapRepository';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game-canvas');
 
@@ -13,6 +13,10 @@ const isTerrainEditorRoute = window.location.pathname.includes('/terrain-editor'
 const isTerrainEditor = isTerrainEditorRoute && !new URLSearchParams(window.location.search).has('play');
 installTouchPlatformGuards();
 
+// Every fresh app boot starts from the canonical remote world. Terrain Lab may layer
+// a local draft on top after this point, but normal THE WAR never reads editor drafts.
+await hydrateCanonicalWorldMap();
+
 if (isTerrainEditor) {
   document.documentElement.classList.add('terrain-editor-active');
   document.body.classList.add('terrain-editor-active');
@@ -24,20 +28,12 @@ if (isTerrainEditor) {
   editor.start();
 } else {
   if (isTerrainEditorRoute) installTerrainEditorServiceWorker();
-  installSharedTerrainReload();
   const game = new Game(gameCanvas);
   game.start();
 }
 
 interface TerrainEditorPreviewController {
   dispose(): void;
-}
-
-function installSharedTerrainReload(): void {
-  window.addEventListener('storage', (event) => {
-    if (event.key !== WORLD_HEIGHTMAP_STORAGE_KEY || event.oldValue === event.newValue) return;
-    window.location.reload();
-  });
 }
 
 function installTerrainEditorGameLink(editor: TerrainEditorPreviewController): void {
@@ -49,7 +45,7 @@ function installTerrainEditorGameLink(editor: TerrainEditorPreviewController): v
   button.className = 'terrain-editor-button';
   button.dataset.openWorld = '';
   button.textContent = 'THE WAR';
-  button.title = '현재 Terrain Lab WorldField를 그대로 THE WAR에서 보기';
+  button.title = '현재 Terrain Lab draft를 실제 게임 렌더러로 미리보기';
   button.addEventListener('click', () => {
     editor.dispose();
     document.documentElement.classList.remove('terrain-editor-active');
@@ -60,7 +56,8 @@ function installTerrainEditorGameLink(editor: TerrainEditorPreviewController): v
     playUrl.hash = '';
     window.history.replaceState(null, '', playUrl.href);
 
-    installSharedTerrainReload();
+    // No reload here: the game consumes the exact in-memory WorldField draft that
+    // Terrain Lab just authored. A fresh navigation still boots from Supabase canonical.
     const game = new Game(gameCanvas);
     game.start();
   });

@@ -1,11 +1,6 @@
 import * as THREE from 'three';
 import { MapControls } from 'three/addons/controls/MapControls.js';
 import {
-  WORLD_HEIGHTMAP_HEIGHT,
-  WORLD_HEIGHTMAP_U8,
-  WORLD_HEIGHTMAP_WIDTH,
-} from '../assets/world/AuthoredWorldHeightmap';
-import {
   SEA_LEVEL,
   TERRAIN_SEGMENTS_X,
   TERRAIN_SEGMENTS_Z,
@@ -13,20 +8,33 @@ import {
   WORLD_HALF_DEPTH,
   WORLD_HALF_WIDTH,
   WORLD_WIDTH,
-  reloadWorldHeightmapFromStorage,
+  applyWorldHeightmapSource,
+  getWorldHeightmapSnapshot,
   terrainHeightFromRawValue,
 } from '../world/WorldField';
 import {
-  clearWorldHeightmapOverride,
-  decodeHeightmapBase64,
-  readWorldHeightmapOverride,
+  quantizeHeightmap,
   sampleHeightmapBytesBilinear,
-  writeWorldHeightmapOverride,
-} from '../world/WorldHeightmapStore';
+} from '../world/HeightmapCodec';
+import {
+  isWorldMapEditor,
+  publishCanonicalWorldMap,
+} from '../world/WorldMapRepository';
 import { addWorldLighting } from '../world/rendering/LightingRenderer';
 import { clearTerrainBlendControlMapCache } from '../world/rendering/TerrainBlendControlMap';
 import { createWorldTerrainSurfaceMaterial } from '../world/rendering/WorldTerrainSurfaceMaterial';
 import { createWorldWaterMaterial, updateWorldWaterTime } from '../world/rendering/WorldWaterMaterial';
+import {
+  clearTerrainDraft,
+  readTerrainDraft,
+  writeTerrainDraft,
+} from './TerrainDraftStore';
+import {
+  getTerrainEditorUser,
+  signInTerrainEditor,
+  signOutTerrainEditor,
+  signUpTerrainEditor,
+} from './TerrainEditorAuth';
 import './terrain-editor.css';
 
 type EditorMode = 'view' | 'sculpt';
@@ -69,7 +77,7 @@ export class TerrainEditor {
   private flattenTarget = 0.5;
   private activeSculptPointerId: number | null = null;
   private strokeSnapshotTaken = false;
-  private loadedSharedOverride = false;
+  private loadedDraft = false;
   private readonly uiRoot: HTMLDivElement;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
@@ -90,6 +98,7 @@ export class TerrainEditor {
     this.scene.fog = new THREE.Fog(0x34484f, 390, 820);
 
     this.seedFromCurrentWorld();
+    this.applyWorkingHeightmapToWorldField();
     this.terrain = this.createTerrain();
     this.water = this.createWater();
     this.brushRing = this.createBrushRing();
@@ -105,6 +114,7 @@ export class TerrainEditor {
     this.bindInput();
     this.resize();
     this.updateTerrainGeometry();
+    void this.refreshEditorIdentity();
 
     window.addEventListener('resize', this.queueResize, { passive: true });
     window.addEventListener('orientationchange', this.queueResize, { passive: true });
@@ -145,18 +155,18 @@ export class TerrainEditor {
   }
 
   private seedFromCurrentWorld(): void {
-    const authored = decodeHeightmapBase64(WORLD_HEIGHTMAP_U8);
+    const canonical = getWorldHeightmapSnapshot();
     fillResampledHeightmap(
       this.originalHeights,
-      authored,
-      WORLD_HEIGHTMAP_WIDTH,
-      WORLD_HEIGHTMAP_HEIGHT,
+      canonical.bytes,
+      canonical.width,
+      canonical.height,
     );
 
-    const shared = readWorldHeightmapOverride();
-    this.loadedSharedOverride = shared !== null;
-    if (shared) {
-      fillResampledHeightmap(this.heights, shared.bytes, shared.width, shared.height);
+    const draft = readTerrainDraft();
+    this.loadedDraft = draft !== null;
+    if (draft) {
+      fillResampledHeightmap(this.heights, draft.bytes, draft.width, draft.height);
       return;
     }
 
@@ -262,9 +272,9 @@ export class TerrainEditor {
   private createUi(): HTMLDivElement {
     const root = document.createElement('div');
     root.className = 'terrain-editor-ui';
-    const initialStatus = this.loadedSharedOverride
-      ? 'THE WAR WorldField 불러옴 · 지형/산맥/해수면 1:1'
-      : '기본 WorldField 불러옴 · 수정 시 THE WAR에 자동 반영';
+    const initialStatus = this.loadedDraft
+      ? '로컬 draft 불러옴 · 공식맵에는 아직 미배포'
+      : '공식 WorldField 불러옴 · 편집은 draft로 자동 저장';
     root.innerHTML = `
       <div class="terrain-editor-topbar">
         <div class="terrain-editor-title">
@@ -272,12 +282,14 @@ export class TerrainEditor {
           <span>THE WAR · WORLD FIELD</span>
         </div>
         <div class="terrain-editor-actions">
+          <button id="terrain-auth" class="terrain-editor-button" type="button">관리자 로그인</button>
           <label class="terrain-editor-button terrain-editor-file">
             Heightmap
             <input id="terrain-file" type="file" accept="image/png,image/jpeg,image/webp" />
           </label>
-          <button id="terrain-reset" class="terrain-editor-button" type="button">원본 복원</button>
-          <button id="terrain-export" class="terrain-editor-button terrain-editor-primary" type="button">PNG 저장</button>
+          <button id="terrain-reset" class="terrain-editor-button" type="button">공식맵으로 복원</button>
+          <button id="terrain-export" class="terrain-editor-button" type="button">PNG 저장</button>
+          <button id="terrain-publish" class="terrain-editor-button terrain-editor-primary" type="button">공식 맵 적용</button>
         </div>
       </div>
 
@@ -323,15 +335,18 @@ export class TerrainEditor {
       fileInput.value = '';
     });
 
+    this.uiRoot.querySelector('#terrain-auth')?.addEventListener('click', () => void this.handleAuth());
+    this.uiRoot.querySelector('#terrain-publish')?.addEventListener('click', () => void this.publishOfficialMap());
+
     this.uiRoot.querySelector('#terrain-reset')?.addEventListener('click', () => {
       this.pushUndoSnapshot();
       this.heights.set(this.originalHeights);
       this.redoStack.length = 0;
-      clearWorldHeightmapOverride();
-      this.loadedSharedOverride = false;
-      reloadWorldHeightmapFromStorage();
+      clearTerrainDraft();
+      this.loadedDraft = false;
+      this.applyWorkingHeightmapToWorldField();
       this.refreshWorldMaterials();
-      this.markGeometryDirty('원본 WorldField로 복원 · THE WAR에도 반영됨');
+      this.markGeometryDirty('공식 WorldField로 draft 복원 완료');
     });
 
     this.uiRoot.querySelector('#terrain-export')?.addEventListener('click', () => this.exportHeightmap());
@@ -367,6 +382,99 @@ export class TerrainEditor {
       this.brushStrength = value / 1000;
       return value.toFixed(0);
     });
+  }
+
+  private async handleAuth(): Promise<void> {
+    const current = await getTerrainEditorUser();
+    if (current) {
+      const shouldSignOut = window.confirm('현재 Terrain Lab 관리자 세션에서 로그아웃할까?');
+      if (!shouldSignOut) return;
+      try {
+        await signOutTerrainEditor();
+        this.setStatus('관리자 로그아웃 완료');
+      } catch (error) {
+        this.setStatus(`로그아웃 실패: ${errorMessage(error)}`);
+      }
+      await this.refreshEditorIdentity();
+      return;
+    }
+
+    const email = window.prompt('Terrain Lab 관리자 이메일');
+    if (!email) return;
+    const password = window.prompt('Terrain Lab 관리자 비밀번호');
+    if (!password) return;
+
+    try {
+      await signInTerrainEditor(email.trim(), password);
+      this.setStatus('관리자 로그인 완료');
+    } catch (signInError) {
+      const shouldCreate = window.confirm(
+        `로그인 실패 (${errorMessage(signInError)}). 이 이메일로 새 Terrain Lab 계정을 만들까?`,
+      );
+      if (!shouldCreate) return;
+      try {
+        await signUpTerrainEditor(email.trim(), password);
+        const signedIn = await getTerrainEditorUser();
+        this.setStatus(
+          signedIn
+            ? '계정 생성 완료 · 편집 권한 확인 중'
+            : '계정 생성 완료 · 이메일 확인 후 다시 로그인해줘',
+        );
+      } catch (signUpError) {
+        this.setStatus(`계정 생성 실패: ${errorMessage(signUpError)}`);
+      }
+    }
+
+    await this.refreshEditorIdentity();
+  }
+
+  private async refreshEditorIdentity(): Promise<void> {
+    const button = this.uiRoot.querySelector<HTMLButtonElement>('#terrain-auth');
+    if (!button) return;
+    const user = await getTerrainEditorUser();
+    if (!user) {
+      button.textContent = '관리자 로그인';
+      button.title = 'Supabase Terrain Lab 관리자 로그인';
+      return;
+    }
+
+    const authorized = await isWorldMapEditor();
+    button.textContent = authorized ? '관리자 ✓' : '권한 대기';
+    button.title = authorized
+      ? '공식 월드맵 배포 권한 활성화됨'
+      : '로그인은 됐지만 world_map_editors 권한이 아직 없음';
+  }
+
+  private async publishOfficialMap(): Promise<void> {
+    this.persistTerrainDraft();
+    const user = await getTerrainEditorUser();
+    if (!user) {
+      this.setStatus('공식 맵 적용 전 관리자 로그인이 필요해');
+      return;
+    }
+    if (!(await isWorldMapEditor())) {
+      this.setStatus('로그인됨 · 아직 공식맵 배포 권한이 없어');
+      return;
+    }
+
+    const confirmed = window.confirm('현재 Terrain Lab 지형을 모든 THE WAR 사용자의 공식 기본 맵으로 적용할까?');
+    if (!confirmed) return;
+
+    const bytes = quantizeHeightmap(this.heights);
+    this.setStatus('공식 WorldField 배포 중…');
+    try {
+      const result = await publishCanonicalWorldMap(bytes, DATA_SIZE, DATA_SIZE);
+      fillResampledHeightmap(this.originalHeights, bytes, DATA_SIZE, DATA_SIZE);
+      this.heights.set(this.originalHeights);
+      clearTerrainDraft();
+      this.loadedDraft = false;
+      this.applyWorkingHeightmapToWorldField();
+      this.refreshWorldMaterials();
+      this.geometryDirty = true;
+      this.setStatus(`공식맵 v${result.version} 배포 완료 · 모든 사용자 다음 로드부터 적용`);
+    } catch (error) {
+      this.setStatus(`공식맵 배포 실패: ${errorMessage(error)}`);
+    }
   }
 
   private setMode(mode: EditorMode): void {
@@ -456,7 +564,7 @@ export class TerrainEditor {
     if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId);
     this.activeSculptPointerId = null;
 
-    if (shouldPersist) this.persistWorldHeightmap('WorldField 저장 완료 · THE WAR와 동일');
+    if (shouldPersist) this.persistTerrainDraft('draft 저장 완료 · 공식맵은 아직 변경 안 됨');
     this.strokeSnapshotTaken = false;
     this.brushRing.visible = false;
   };
@@ -573,7 +681,7 @@ export class TerrainEditor {
     this.redoStack.push(this.heights.slice());
     this.heights.set(previous);
     this.markGeometryDirty();
-    this.persistWorldHeightmap('되돌림 · THE WAR WorldField에 반영됨');
+    this.persistTerrainDraft('되돌림 · draft 저장됨');
   }
 
   private redo(): void {
@@ -582,7 +690,7 @@ export class TerrainEditor {
     this.undoStack.push(this.heights.slice());
     this.heights.set(next);
     this.markGeometryDirty();
-    this.persistWorldHeightmap('다시 적용 · THE WAR WorldField에 반영됨');
+    this.persistTerrainDraft('다시 적용 · draft 저장됨');
   }
 
   private async loadHeightmap(file: File): Promise<void> {
@@ -610,14 +718,14 @@ export class TerrainEditor {
       this.undoStack.length = 0;
       this.redoStack.length = 0;
       this.markGeometryDirty();
-      this.persistWorldHeightmap(`${file.name} · 257² · THE WAR WorldField에 반영됨`);
+      this.persistTerrainDraft(`${file.name} · 257² · draft 저장됨`);
     } catch (error) {
-      if (status) status.textContent = `불러오기 실패: ${error instanceof Error ? error.message : 'unknown error'}`;
+      if (status) status.textContent = `불러오기 실패: ${errorMessage(error)}`;
     }
   }
 
   private exportHeightmap(): void {
-    this.persistWorldHeightmap();
+    this.persistTerrainDraft();
     const surface = document.createElement('canvas');
     surface.width = DATA_SIZE;
     surface.height = DATA_SIZE;
@@ -636,27 +744,27 @@ export class TerrainEditor {
     surface.toBlob((blob) => {
       if (!blob) return;
       downloadBlob(blob, `the-war-heightmap-${Date.now()}.png`);
-      this.setStatus('PNG 저장 준비 완료 · THE WAR 공유맵도 최신 상태');
+      this.setStatus('PNG 저장 준비 완료 · 공식맵은 변경되지 않음');
     }, 'image/png');
   }
 
-  private persistWorldHeightmap(status?: string): void {
-    const saved = writeWorldHeightmapOverride(this.heights, DATA_SIZE, DATA_SIZE);
-    if (!saved) {
-      this.setStatus('THE WAR 저장 실패 · 브라우저 저장공간을 확인해줘');
+  private persistTerrainDraft(status?: string): void {
+    const draft = writeTerrainDraft(this.heights, DATA_SIZE, DATA_SIZE);
+    if (!draft) {
+      this.setStatus('draft 저장 실패 · 브라우저 저장공간을 확인해줘');
       return;
     }
 
-    const shared = readWorldHeightmapOverride();
-    if (shared) {
-      fillResampledHeightmap(this.heights, shared.bytes, shared.width, shared.height);
-    }
-
-    reloadWorldHeightmapFromStorage();
+    fillResampledHeightmap(this.heights, draft.bytes, draft.width, draft.height);
+    applyWorldHeightmapSource(draft.bytes, draft.width, draft.height);
     this.refreshWorldMaterials();
     this.geometryDirty = true;
-    this.loadedSharedOverride = true;
+    this.loadedDraft = true;
     if (status) this.setStatus(status);
+  }
+
+  private applyWorkingHeightmapToWorldField(): void {
+    applyWorldHeightmapSource(quantizeHeightmap(this.heights), DATA_SIZE, DATA_SIZE);
   }
 
   private markGeometryDirty(status?: string): void {
@@ -789,4 +897,8 @@ function downloadBlob(blob: Blob, filename: string): void {
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'unknown error';
 }

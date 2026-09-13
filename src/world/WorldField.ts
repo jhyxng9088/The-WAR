@@ -3,11 +3,8 @@ import {
   WORLD_HEIGHTMAP_U8,
   WORLD_HEIGHTMAP_WIDTH,
 } from '../assets/world/AuthoredWorldHeightmap';
+import { decodeHeightmapBase64 } from './HeightmapCodec';
 import { strategicMountainReliefAt } from './StrategicMountainRelief';
-import {
-  decodeHeightmapBase64,
-  readWorldHeightmapOverride,
-} from './WorldHeightmapStore';
 
 export const MAP_SCALE = 2.5;
 export const WORLD_WIDTH = 420;
@@ -45,6 +42,12 @@ export interface RiverDefinition {
   mouthWidth: number;
 }
 
+export interface WorldHeightmapSnapshot {
+  width: number;
+  height: number;
+  bytes: Uint8Array;
+}
+
 export const RIVERS: readonly RiverDefinition[] = [];
 
 const LAND_THRESHOLD = 0.028;
@@ -58,15 +61,38 @@ let EXPECTED_SAMPLES = HEIGHTMAP_WIDTH * HEIGHTMAP_HEIGHT;
 let WATER_DISTANCE_CELLS: Uint8Array<ArrayBufferLike> = new Uint8Array(EXPECTED_SAMPLES);
 let LAND_DISTANCE_CELLS: Uint8Array<ArrayBufferLike> = new Uint8Array(EXPECTED_SAMPLES);
 
-reloadWorldHeightmapFromStorage();
+applyWorldHeightmapSource(AUTHORED_HEIGHT_BYTES, WORLD_HEIGHTMAP_WIDTH, WORLD_HEIGHTMAP_HEIGHT);
 
-export function reloadWorldHeightmapFromStorage(): void {
-  const stored = readWorldHeightmapOverride();
-  applyHeightmapSource(
-    stored?.bytes ?? AUTHORED_HEIGHT_BYTES,
-    stored?.width ?? WORLD_HEIGHTMAP_WIDTH,
-    stored?.height ?? WORLD_HEIGHTMAP_HEIGHT,
-  );
+export function applyWorldHeightmapSource(bytes: Uint8Array, width: number, height: number): void {
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 2 || height < 2) {
+    throw new Error(`Invalid world heightmap dimensions: ${width}x${height}.`);
+  }
+
+  const expectedSamples = width * height;
+  if (bytes.length !== expectedSamples) {
+    throw new Error(
+      `World heightmap is incomplete: expected ${expectedSamples} samples, got ${bytes.length}.`,
+    );
+  }
+
+  HEIGHT_BYTES = bytes.slice();
+  HEIGHTMAP_WIDTH = width;
+  HEIGHTMAP_HEIGHT = height;
+  EXPECTED_SAMPLES = expectedSamples;
+  WATER_DISTANCE_CELLS = createDistanceField('water');
+  LAND_DISTANCE_CELLS = createDistanceField('land');
+}
+
+export function resetWorldHeightmapToAuthored(): void {
+  applyWorldHeightmapSource(AUTHORED_HEIGHT_BYTES, WORLD_HEIGHTMAP_WIDTH, WORLD_HEIGHTMAP_HEIGHT);
+}
+
+export function getWorldHeightmapSnapshot(): WorldHeightmapSnapshot {
+  return {
+    width: HEIGHTMAP_WIDTH,
+    height: HEIGHTMAP_HEIGHT,
+    bytes: HEIGHT_BYTES.slice(),
+  };
 }
 
 export function terrainSampleAt(x: number, z: number): TerrainSample {
@@ -181,26 +207,6 @@ export function deterministic01(x: number, z: number, seed = 0): number {
 
 export function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
-}
-
-function applyHeightmapSource(bytes: Uint8Array, width: number, height: number): void {
-  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 2 || height < 2) {
-    throw new Error(`Invalid world heightmap dimensions: ${width}x${height}.`);
-  }
-
-  const expectedSamples = width * height;
-  if (bytes.length !== expectedSamples) {
-    throw new Error(
-      `World heightmap is incomplete: expected ${expectedSamples} samples, got ${bytes.length}.`,
-    );
-  }
-
-  HEIGHT_BYTES = bytes;
-  HEIGHTMAP_WIDTH = width;
-  HEIGHTMAP_HEIGHT = height;
-  EXPECTED_SAMPLES = expectedSamples;
-  WATER_DISTANCE_CELLS = createDistanceField('water');
-  LAND_DISTANCE_CELLS = createDistanceField('land');
 }
 
 function terrainHeightFromRawAt(x: number, z: number, raw: number): number {
