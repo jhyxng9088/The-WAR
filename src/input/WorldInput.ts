@@ -19,14 +19,15 @@ export class WorldInput {
     controls.target.copy(camera.target);
     controls.cursor.set(0, camera.target.y, 0);
 
-    // Use Three.js' map-navigation preset instead of a home-grown gesture
-    // classifier. This gives the standard bird's-eye map behavior:
-    // one-finger pan, two-finger rotate + pinch zoom, mouse-wheel zoom.
+    // Keep the standard bird's-eye map gestures, but smooth irregular touch
+    // event cadence over animation frames. This is especially noticeable on
+    // iPadOS where pointer events can arrive in slightly uneven bursts.
     controls.touches.ONE = THREE.TOUCH.PAN;
     controls.touches.TWO = THREE.TOUCH.DOLLY_ROTATE;
     controls.screenSpacePanning = false;
     controls.zoomToCursor = true;
-    controls.enableDamping = false;
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.16;
 
     controls.minDistance = MIN_DISTANCE;
     controls.maxDistance = MAX_DISTANCE;
@@ -40,6 +41,10 @@ export class WorldInput {
 
     controls.update();
     this.controls = controls;
+  }
+
+  update(): void {
+    this.controls.update();
   }
 
   dispose(): void {
