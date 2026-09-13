@@ -50,22 +50,33 @@ export interface RiverDefinition {
 // second procedural river network on top of the authored terrain.
 export const RIVERS: readonly RiverDefinition[] = [];
 
-const STORED_HEIGHTMAP = readWorldHeightmapOverride();
-const HEIGHT_BYTES = STORED_HEIGHTMAP?.bytes ?? decodeHeightmapBase64(WORLD_HEIGHTMAP_U8);
-const HEIGHTMAP_WIDTH = STORED_HEIGHTMAP?.width ?? WORLD_HEIGHTMAP_WIDTH;
-const HEIGHTMAP_HEIGHT = STORED_HEIGHTMAP?.height ?? WORLD_HEIGHTMAP_HEIGHT;
-const EXPECTED_SAMPLES = HEIGHTMAP_WIDTH * HEIGHTMAP_HEIGHT;
 const LAND_THRESHOLD = 0.028;
 const MAX_LAND_HEIGHT = 12.2;
+const AUTHORED_HEIGHT_BYTES = decodeHeightmapBase64(WORLD_HEIGHTMAP_U8);
 
-if (HEIGHT_BYTES.length !== EXPECTED_SAMPLES) {
-  throw new Error(
-    `World heightmap is incomplete: expected ${EXPECTED_SAMPLES} samples, got ${HEIGHT_BYTES.length}.`,
+let HEIGHT_BYTES = AUTHORED_HEIGHT_BYTES;
+let HEIGHTMAP_WIDTH = WORLD_HEIGHTMAP_WIDTH;
+let HEIGHTMAP_HEIGHT = WORLD_HEIGHTMAP_HEIGHT;
+let EXPECTED_SAMPLES = HEIGHTMAP_WIDTH * HEIGHTMAP_HEIGHT;
+let WATER_DISTANCE_CELLS = new Uint8Array(EXPECTED_SAMPLES);
+let LAND_DISTANCE_CELLS = new Uint8Array(EXPECTED_SAMPLES);
+
+reloadWorldHeightmapFromStorage();
+
+/**
+ * Re-read the shared Terrain Lab override and rebuild every derived WorldField
+ * distance field. Production normally calls this only at module startup; Terrain
+ * Lab calls it after a completed edit so its preview uses the exact same runtime
+ * source as THE WAR without maintaining a second terrain interpretation.
+ */
+export function reloadWorldHeightmapFromStorage(): void {
+  const stored = readWorldHeightmapOverride();
+  applyHeightmapSource(
+    stored?.bytes ?? AUTHORED_HEIGHT_BYTES,
+    stored?.width ?? WORLD_HEIGHTMAP_WIDTH,
+    stored?.height ?? WORLD_HEIGHTMAP_HEIGHT,
   );
 }
-
-const WATER_DISTANCE_CELLS = createDistanceField('water');
-const LAND_DISTANCE_CELLS = createDistanceField('land');
 
 export function terrainSampleAt(x: number, z: number): TerrainSample {
   const raw = heightmapValueAt(x, z);
@@ -88,6 +99,14 @@ export function terrainSampleAt(x: number, z: number): TerrainSample {
 export function terrainHeight(x: number, z: number): number {
   const raw = heightmapValueAt(x, z);
   return terrainHeightFromRawAt(x, z, raw);
+}
+
+/**
+ * Canonical raw-height -> world-height transform used by both production and
+ * Terrain Lab while the editor is actively sculpting an in-memory heightmap.
+ */
+export function terrainHeightFromRawValue(x: number, z: number, raw: number): number {
+  return terrainHeightFromRawAt(x, z, clamp01(raw));
 }
 
 export function islandSignal(x: number, z: number): number {
@@ -175,6 +194,26 @@ export function deterministic01(x: number, z: number, seed = 0): number {
 
 export function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
+}
+
+function applyHeightmapSource(bytes: Uint8Array, width: number, height: number): void {
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 2 || height < 2) {
+    throw new Error(`Invalid world heightmap dimensions: ${width}x${height}.`);
+  }
+
+  const expectedSamples = width * height;
+  if (bytes.length !== expectedSamples) {
+    throw new Error(
+      `World heightmap is incomplete: expected ${expectedSamples} samples, got ${bytes.length}.`,
+    );
+  }
+
+  HEIGHT_BYTES = bytes;
+  HEIGHTMAP_WIDTH = width;
+  HEIGHTMAP_HEIGHT = height;
+  EXPECTED_SAMPLES = expectedSamples;
+  WATER_DISTANCE_CELLS = createDistanceField('water');
+  LAND_DISTANCE_CELLS = createDistanceField('land');
 }
 
 function terrainHeightFromRawAt(x: number, z: number, raw: number): number {
