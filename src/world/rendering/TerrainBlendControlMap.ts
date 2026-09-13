@@ -75,6 +75,19 @@ export function getTerrainBlendControlMaps(size = DEFAULT_CONTROL_SIZE): Terrain
   return result;
 }
 
+/**
+ * Terrain Lab can replace the active heightmap at runtime. Dispose the old data
+ * textures before rebuilding materials so its preview and THE WAR derive every
+ * biome/coast/water mask from the same WorldField state.
+ */
+export function clearTerrainBlendControlMapCache(): void {
+  for (const controls of cache.values()) {
+    controls.regional.dispose();
+    controls.features.dispose();
+  }
+  cache.clear();
+}
+
 function createControlTexture(data: Uint8Array, size: number, name: string): THREE.DataTexture {
   const texture = new THREE.DataTexture(
     data,
