@@ -18,8 +18,6 @@ export interface TerrainBlendControlMaps {
   waterDepthMax: number;
 }
 
-// 512² keeps biome/coast transitions fine enough for the strategy camera without
-// the 4x startup/memory cost of 1024² on iPad-class devices.
 const DEFAULT_CONTROL_SIZE = 512;
 const RIVER_DISTANCE_MAX = 48;
 const WATER_DEPTH_MAX = 2.4;
@@ -47,8 +45,6 @@ export function getTerrainBlendControlMaps(size = DEFAULT_CONTROL_SIZE): Terrain
         ? 0
         : THREE.MathUtils.clamp((SEA_LEVEL - sample.height) / WATER_DEPTH_MAX, 0, 1);
       const coast = THREE.MathUtils.clamp(coastInfluenceAt(worldX, z), 0, 1);
-      // Rendering used to paint the whole 15+ world-unit coast influence as a tan
-      // band. Compress it here so only the actual shoreline reads as sand/wet soil.
       const visualCoast = Math.pow(coast, land ? 2.6 : 1.8);
 
       regionalData[pixel] = encode01(sample.moisture);
@@ -73,6 +69,14 @@ export function getTerrainBlendControlMaps(size = DEFAULT_CONTROL_SIZE): Terrain
   };
   cache.set(size, result);
   return result;
+}
+
+export function clearTerrainBlendControlMapCache(): void {
+  for (const controls of cache.values()) {
+    controls.regional.dispose();
+    controls.features.dispose();
+  }
+  cache.clear();
 }
 
 function createControlTexture(data: Uint8Array, size: number, name: string): THREE.DataTexture {
