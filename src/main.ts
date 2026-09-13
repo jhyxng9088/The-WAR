@@ -18,6 +18,7 @@ if (isTerrainEditor) {
 
   const { TerrainEditor } = await import('./terrain-editor/TerrainEditor');
   const editor = new TerrainEditor(canvas);
+  installTerrainEditorGameLink();
   editor.start();
 } else {
   installSharedTerrainReload();
@@ -35,6 +36,25 @@ function installSharedTerrainReload(): void {
   });
 }
 
+function installTerrainEditorGameLink(): void {
+  const actions = document.querySelector<HTMLElement>('.terrain-editor-actions');
+  if (!actions || actions.querySelector('[data-open-world]')) return;
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'terrain-editor-button';
+  button.dataset.openWorld = '';
+  button.textContent = 'THE WAR';
+  button.title = '같은 앱 컨텍스트에서 THE WAR 열기';
+  button.addEventListener('click', () => {
+    // Do not open a new tab/window here. Terrain Lab persists its heightmap in the
+    // current web-app storage partition, so the production world must be entered
+    // through the same browsing/app context to read the exact same override.
+    window.location.assign(new URL('../', window.location.href).href);
+  });
+  actions.prepend(button);
+}
+
 function installTouchPlatformGuards(): void {
   const blockNativeZoom: EventListener = (event) => event.preventDefault();
 
@@ -49,9 +69,9 @@ function installTouchPlatformGuards(): void {
 }
 
 function installTerrainEditorServiceWorker(): void {
-  // The editor is installable as a standalone PWA. Keep runtime requests
-  // network-first so a new GitHub Pages deploy cannot mix an old cached shell
-  // with new hashed bundles.
+  // Terrain Lab can still cache its own editor shell, but the manifest scope also
+  // includes THE WAR so navigation through the editor's THE WAR button stays in
+  // one standalone app/storage context on iOS instead of crossing PWA boundaries.
   if ('serviceWorker' in navigator) {
     const serviceWorkerUrl = new URL('sw.js', window.location.href);
     void navigator.serviceWorker.register(serviceWorkerUrl, { scope: './' }).catch((error: unknown) => {
