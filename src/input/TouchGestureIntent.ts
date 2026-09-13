@@ -18,20 +18,21 @@ export const TOUCH_ZOOM_RESPONSE = 1.0;
 export const TOUCH_ROTATE_RESPONSE = -1.0;
 export const TOUCH_TILT_RESPONSE = 0.0019;
 
-const ZOOM_LOCK_THRESHOLD = 0.038;
-const ROTATE_LOCK_THRESHOLD = 0.058;
-const TILT_LOCK_THRESHOLD_PX = 16;
-const TILT_VERTICAL_DOMINANCE = 1.25;
-const TILT_MAX_ZOOM_DRIFT = 0.02;
-const TILT_MAX_ROTATE_DRIFT = 0.03;
-const MAX_ZOOM_STEP = 1.08;
-const MAX_ROTATE_STEP = 0.085;
-const MAX_TILT_STEP_PX = 10;
+const ZOOM_START_THRESHOLD = 0.014;
+const ROTATE_START_THRESHOLD = 0.024;
+const SWITCH_BIAS = 1.6;
+const SWITCH_MIN_SCORE = 1.8;
+const MAX_ZOOM_STEP = 1.12;
+const MAX_ROTATE_STEP = 0.11;
+const MAX_ZOOM_LOG_STEP = Math.log(MAX_ZOOM_STEP);
 
 /**
- * Locks a two-finger gesture to one camera intent for the lifetime of that
- * gesture. This prevents a pinch from also rotating/tilting the camera, and
- * prevents a twist from accidentally zooming.
+ * Shared mobile strategy gesture recognizer.
+ *
+ * It keeps only a tiny opening dead-zone, emits the accumulated opening motion
+ * instead of throwing it away, and can switch between zoom and rotation when
+ * the competing motion becomes clearly dominant. Two-finger vertical motion is
+ * intentionally not classified so it cannot steal pinch/twist input.
  */
 export class TouchGestureIntent {
   private origin: TouchGestureSample | null = null;
@@ -58,55 +59,79 @@ export class TouchGestureIntent {
     }
 
     if (!this.origin) this.origin = { ...previous };
-    if (this.mode === 'pending') this.mode = this.classify(sample);
-    this.previous = { ...sample };
-    if (this.mode === 'pending') return null;
 
     const rawScale = previous.distance > 0 ? sample.distance / previous.distance : 1;
-    const scale = Number.isFinite(rawScale)
-      ? clamp(rawScale, 1 / MAX_ZOOM_STEP, MAX_ZOOM_STEP)
-      : 1;
-    const angleDelta = clamp(
+    const rawZoomLog = Number.isFinite(rawScale)
+      ? clamp(Math.log(Math.max(0.0001, rawScale)), -MAX_ZOOM_LOG_STEP, MAX_ZOOM_LOG_STEP)
+      : 0;
+    const rawAngleDelta = clamp(
       shortestAngle(sample.angle - previous.angle),
       -MAX_ROTATE_STEP,
       MAX_ROTATE_STEP,
     );
-    const verticalDelta = clamp(
-      sample.centerY - previous.centerY,
-      -MAX_TILT_STEP_PX,
-      MAX_TILT_STEP_PX,
-    );
+
+    if (this.mode === 'pending') {
+      const origin = this.origin;
+      if (!origin || origin.distance <= 0) {
+        this.previous = { ...sample };
+        return null;
+      }
+
+      const totalZoomLog = clamp(
+        Math.log(Math.max(0.0001, sample.distance / origin.distance)),
+        -MAX_ZOOM_LOG_STEP,
+        MAX_ZOOM_LOG_STEP,
+      );
+      const totalAngleDelta = clamp(
+        shortestAngle(sample.angle - origin.angle),
+        -MAX_ROTATE_STEP,
+        MAX_ROTATE_STEP,
+      );
+      const zoomScore = Math.abs(totalZoomLog) / ZOOM_START_THRESHOLD;
+      const rotateScore = Math.abs(totalAngleDelta) / ROTATE_START_THRESHOLD;
+
+      if (Math.max(zoomScore, rotateScore) < 1) {
+        this.previous = { ...sample };
+        return null;
+      }
+
+      this.mode = zoomScore >= rotateScore ? 'zoom' : 'rotate';
+      this.previous = { ...sample };
+      this.origin = { ...sample };
+
+      return {
+        mode: this.mode,
+        scale: this.mode === 'zoom' ? Math.exp(totalZoomLog) : 1,
+        angleDelta: this.mode === 'rotate' ? totalAngleDelta : 0,
+        verticalDelta: 0,
+      };
+    }
+
+    const zoomScore = Math.abs(rawZoomLog) / ZOOM_START_THRESHOLD;
+    const rotateScore = Math.abs(rawAngleDelta) / ROTATE_START_THRESHOLD;
+
+    if (
+      this.mode === 'zoom'
+      && rotateScore >= SWITCH_MIN_SCORE
+      && rotateScore > zoomScore * SWITCH_BIAS
+    ) {
+      this.mode = 'rotate';
+    } else if (
+      this.mode === 'rotate'
+      && zoomScore >= SWITCH_MIN_SCORE
+      && zoomScore > rotateScore * SWITCH_BIAS
+    ) {
+      this.mode = 'zoom';
+    }
+
+    this.previous = { ...sample };
 
     return {
       mode: this.mode,
-      scale: this.mode === 'zoom' ? scale : 1,
-      angleDelta: this.mode === 'rotate' ? angleDelta : 0,
-      verticalDelta: this.mode === 'tilt' ? verticalDelta : 0,
+      scale: this.mode === 'zoom' ? Math.exp(rawZoomLog) : 1,
+      angleDelta: this.mode === 'rotate' ? rawAngleDelta : 0,
+      verticalDelta: 0,
     };
-  }
-
-  private classify(sample: TouchGestureSample): TouchGestureMode {
-    const origin = this.origin;
-    if (!origin || origin.distance <= 0) return 'pending';
-
-    const zoomMotion = Math.abs(Math.log(Math.max(0.0001, sample.distance / origin.distance)));
-    const rotateMotion = Math.abs(shortestAngle(sample.angle - origin.angle));
-    const dx = sample.centerX - origin.centerX;
-    const dy = sample.centerY - origin.centerY;
-
-    const zoomScore = zoomMotion / ZOOM_LOCK_THRESHOLD;
-    const rotateScore = rotateMotion / ROTATE_LOCK_THRESHOLD;
-    const tiltEligible =
-      Math.abs(dy) >= TILT_LOCK_THRESHOLD_PX
-      && Math.abs(dy) >= Math.abs(dx) * TILT_VERTICAL_DOMINANCE
-      && zoomMotion <= TILT_MAX_ZOOM_DRIFT
-      && rotateMotion <= TILT_MAX_ROTATE_DRIFT;
-    const tiltScore = tiltEligible ? Math.abs(dy) / TILT_LOCK_THRESHOLD_PX : 0;
-
-    const strongest = Math.max(zoomScore, rotateScore, tiltScore);
-    if (strongest < 1) return 'pending';
-    if (tiltScore === strongest) return 'tilt';
-    return zoomScore >= rotateScore ? 'zoom' : 'rotate';
   }
 }
 
