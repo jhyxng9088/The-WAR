@@ -8,7 +8,8 @@ if (!canvas) {
   throw new Error('THE WAR canvas was not found.');
 }
 
-const isTerrainEditor = window.location.pathname.includes('/terrain-editor');
+const isTerrainEditorRoute = window.location.pathname.includes('/terrain-editor');
+const isTerrainEditor = isTerrainEditorRoute && !new URLSearchParams(window.location.search).has('play');
 installTouchPlatformGuards();
 
 if (isTerrainEditor) {
@@ -18,8 +19,10 @@ if (isTerrainEditor) {
 
   const { TerrainEditor } = await import('./terrain-editor/TerrainEditor');
   const editor = new TerrainEditor(canvas);
+  installTerrainEditorGameLink();
   editor.start();
 } else {
+  if (isTerrainEditorRoute) installTerrainEditorServiceWorker();
   installSharedTerrainReload();
   const game = new Game(canvas);
   game.start();
@@ -33,6 +36,28 @@ function installSharedTerrainReload(): void {
     // the exact same Terrain Lab heightmap rather than hot-swapping only the mesh.
     window.location.reload();
   });
+}
+
+function installTerrainEditorGameLink(): void {
+  const actions = document.querySelector<HTMLElement>('.terrain-editor-actions');
+  if (!actions || actions.querySelector('[data-open-world]')) return;
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'terrain-editor-button';
+  button.dataset.openWorld = '';
+  button.textContent = 'THE WAR';
+  button.title = '현재 Terrain Lab 저장소로 THE WAR 열기';
+  button.addEventListener('click', () => {
+    // Keep production THE WAR under /terrain-editor/ when launched from Terrain Lab.
+    // This remains inside the already-installed editor PWA scope even on iOS, so
+    // the game reads the exact localStorage partition that the editor just wrote.
+    const playUrl = new URL(window.location.href);
+    playUrl.search = '?play=1';
+    playUrl.hash = '';
+    window.location.assign(playUrl.href);
+  });
+  actions.prepend(button);
 }
 
 function installTouchPlatformGuards(): void {
@@ -49,9 +74,9 @@ function installTouchPlatformGuards(): void {
 }
 
 function installTerrainEditorServiceWorker(): void {
-  // The editor is installable as a standalone PWA. Keep runtime requests
-  // network-first so a new GitHub Pages deploy cannot mix an old cached shell
-  // with new hashed bundles.
+  // Keep the editor shell network-first. The ?play=1 production view deliberately
+  // stays under this same scope so an installed Terrain Lab never has to cross into
+  // a separate browser/PWA storage context just to preview its edited WorldField.
   if ('serviceWorker' in navigator) {
     const serviceWorkerUrl = new URL('sw.js', window.location.href);
     void navigator.serviceWorker.register(serviceWorkerUrl, { scope: './' }).catch((error: unknown) => {
