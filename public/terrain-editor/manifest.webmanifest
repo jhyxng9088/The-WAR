@@ -4,7 +4,7 @@
   "short_name": "Terrain Lab",
   "description": "Touch-first terrain editor for THE WAR.",
   "start_url": "/The-WAR/terrain-editor/",
-  "scope": "/The-WAR/terrain-editor/",
+  "scope": "/The-WAR/",
   "display": "standalone",
   "background_color": "#182229",
   "theme_color": "#182229",
