@@ -12,13 +12,27 @@ import {
   TOUCH_ZOOM_RESPONSE,
 } from '../input/TouchGestureIntent';
 import {
+  SEA_LEVEL,
+  TERRAIN_SEGMENTS_X,
+  TERRAIN_SEGMENTS_Z,
+  WORLD_DEPTH,
+  WORLD_HALF_DEPTH,
+  WORLD_HALF_WIDTH,
+  WORLD_WIDTH,
+  reloadWorldHeightmapFromStorage,
+  terrainHeightFromRawValue,
+} from '../world/WorldField';
+import {
   clearWorldHeightmapOverride,
   decodeHeightmapBase64,
   readWorldHeightmapOverride,
   sampleHeightmapBytesBilinear,
   writeWorldHeightmapOverride,
 } from '../world/WorldHeightmapStore';
-import { createTerrainSurfaceMaterial } from '../world/rendering/TerrainSurfaceMaterial';
+import { addWorldLighting } from '../world/rendering/LightingRenderer';
+import { clearTerrainBlendControlMapCache } from '../world/rendering/TerrainBlendControlMap';
+import { createWorldTerrainSurfaceMaterial } from '../world/rendering/WorldTerrainSurfaceMaterial';
+import { createWorldWaterMaterial, updateWorldWaterTime } from '../world/rendering/WorldWaterMaterial';
 import './terrain-editor.css';
 
 type EditorMode = 'view' | 'sculpt';
@@ -30,20 +44,17 @@ interface PointerState {
 }
 
 const DATA_SIZE = 257;
-const MESH_SEGMENTS = 128;
-const WORLD_SIZE = 220;
-const MIN_CAMERA_DISTANCE = 58;
-const MAX_CAMERA_DISTANCE = 360;
+const MIN_CAMERA_DISTANCE = 78;
+const MAX_CAMERA_DISTANCE = 780;
 const MIN_CAMERA_PITCH = 0.48;
 const MAX_CAMERA_PITCH = 1.24;
 const MAX_UNDO = 18;
-const WATER_COLOR = 0x467683;
-const VIEW_GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const VIEW_GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), -SEA_LEVEL);
 
 export class TerrainEditor {
   private readonly scene = new THREE.Scene();
   private readonly renderer: THREE.WebGLRenderer;
-  private readonly camera = new THREE.PerspectiveCamera(34, 16 / 9, 0.2, 900);
+  private readonly camera = new THREE.PerspectiveCamera(34, 16 / 9, 0.2, 1400);
   private readonly target = new THREE.Vector3(0, 0, 0);
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointerNdc = new THREE.Vector2();
@@ -54,22 +65,20 @@ export class TerrainEditor {
   private readonly pointers = new Map<number, PointerState>();
   private readonly touchGesture = new TouchGestureIntent();
 
-  private terrain: THREE.Mesh;
-  private water: THREE.Mesh;
+  private terrain: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>;
+  private water: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>;
   private brushRing: THREE.Mesh;
   private frameId: number | null = null;
   private resizeFrameId: number | null = null;
   private geometryDirty = true;
   private mode: EditorMode = 'sculpt';
   private tool: SculptTool = 'raise';
-  private heightScale = 8;
-  private seaLevel = 0.085;
-  private brushRadius = 10;
+  private brushRadius = 12;
   private brushStrength = 0.022;
   private flattenTarget = 0.5;
   private cameraYaw = 0.67;
   private cameraPitch = 1.07;
-  private cameraDistance = 190;
+  private cameraDistance = 360;
   private previousSinglePointer: PointerState | null = null;
   private strokeSnapshotTaken = false;
   private loadedSharedOverride = false;
@@ -84,18 +93,20 @@ export class TerrainEditor {
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.12;
+    this.renderer.toneMappingExposure = 1.08;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    this.scene.background = new THREE.Color(0x43565f);
-    this.scene.fog = new THREE.Fog(0x43565f, 250, 540);
+    this.scene.background = new THREE.Color(0x34484f);
+    this.scene.fog = new THREE.Fog(0x34484f, 390, 820);
 
     this.seedFromCurrentWorld();
     this.terrain = this.createTerrain();
     this.water = this.createWater();
     this.brushRing = this.createBrushRing();
     this.scene.add(this.terrain, this.water, this.brushRing);
-    this.addLighting();
+    addWorldLighting(this.scene);
     this.syncCamera();
 
     this.uiRoot = this.createUi();
@@ -115,6 +126,7 @@ export class TerrainEditor {
     if (this.frameId !== null) return;
     const render = (): void => {
       if (this.geometryDirty) this.updateTerrainGeometry();
+      updateWorldWaterTime(this.water.material, performance.now() * 0.001);
       this.renderer.render(this.scene, this.camera);
       this.frameId = requestAnimationFrame(render);
     };
@@ -131,6 +143,12 @@ export class TerrainEditor {
     window.removeEventListener('orientationchange', this.queueResize);
     window.visualViewport?.removeEventListener('resize', this.queueResize);
     window.visualViewport?.removeEventListener('scroll', this.queueResize);
+    this.terrain.geometry.dispose();
+    this.terrain.material.dispose();
+    this.water.geometry.dispose();
+    this.water.material.dispose();
+    this.brushRing.geometry.dispose();
+    (this.brushRing.material as THREE.Material).dispose();
     this.uiRoot.remove();
     this.renderer.dispose();
   }
@@ -154,37 +172,48 @@ export class TerrainEditor {
     this.heights.set(this.originalHeights);
   }
 
-  private createTerrain(): THREE.Mesh {
-    const geometry = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, MESH_SEGMENTS, MESH_SEGMENTS);
+  private createTerrain(): THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial> {
+    // Production uses 256 segments => 257 vertices. Terrain Lab edits the same
+    // 257² raw height grid, so every editor vertex now maps 1:1 to THE WAR.
+    const geometry = new THREE.PlaneGeometry(
+      WORLD_WIDTH,
+      WORLD_DEPTH,
+      TERRAIN_SEGMENTS_X,
+      TERRAIN_SEGMENTS_Z,
+    );
     geometry.rotateX(-Math.PI / 2);
 
-    const material = createTerrainSurfaceMaterial({
-      detailRepeat: 17,
-      normalStrength: 0.12,
-      roughness: 0.9,
-      minHeight: 0.8,
-      maxHeight: 6.4,
-      seaLevel: 0,
-    });
-    const mesh = new THREE.Mesh(geometry, material);
+    const mesh = new THREE.Mesh(geometry, this.createTerrainMaterial());
     mesh.receiveShadow = true;
     return mesh;
   }
 
-  private createWater(): THREE.Mesh {
-    const geometry = new THREE.PlaneGeometry(WORLD_SIZE * 1.45, WORLD_SIZE * 1.45, 1, 1);
-    geometry.rotateX(-Math.PI / 2);
-    const material = new THREE.MeshStandardMaterial({
-      color: WATER_COLOR,
-      roughness: 0.42,
-      metalness: 0,
-      transparent: true,
-      opacity: 0.94,
+  private createTerrainMaterial(): THREE.MeshStandardMaterial {
+    return createWorldTerrainSurfaceMaterial({
+      detailRepeat: 32,
+      roughness: 0.9,
+      seaLevel: SEA_LEVEL,
+      controlMapSize: 512,
+      anisotropy: 4,
     });
+  }
+
+  private createWater(): THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial> {
+    const geometry = new THREE.PlaneGeometry(WORLD_WIDTH * 1.08, WORLD_DEPTH * 1.08, 1, 1);
+    geometry.rotateX(-Math.PI / 2);
+    const material = this.createWaterMaterial();
     const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.y = 0;
-    mesh.renderOrder = -1;
+    mesh.position.y = SEA_LEVEL + 0.006;
+    mesh.renderOrder = 2;
+    mesh.receiveShadow = true;
     return mesh;
+  }
+
+  private createWaterMaterial(): THREE.MeshStandardMaterial {
+    return createWorldWaterMaterial({
+      controlMapSize: 512,
+      roughness: 0.48,
+    });
   }
 
   private createBrushRing(): THREE.Mesh {
@@ -193,7 +222,7 @@ export class TerrainEditor {
     const material = new THREE.MeshBasicMaterial({
       color: 0xf2d57c,
       transparent: true,
-      opacity: 0.88,
+      opacity: 0.9,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
@@ -203,26 +232,17 @@ export class TerrainEditor {
     return mesh;
   }
 
-  private addLighting(): void {
-    const sky = new THREE.HemisphereLight(0xdbe4df, 0x5b5548, 2.0);
-    const sun = new THREE.DirectionalLight(0xffefd7, 2.55);
-    sun.position.set(-90, 150, 95);
-    const fill = new THREE.DirectionalLight(0xa8bec8, 0.52);
-    fill.position.set(120, 60, -110);
-    this.scene.add(sky, sun, fill);
-  }
-
   private createUi(): HTMLDivElement {
     const root = document.createElement('div');
     root.className = 'terrain-editor-ui';
     const initialStatus = this.loadedSharedOverride
-      ? 'THE WAR 공유 heightmap 불러옴 · 수정 시 자동 반영'
-      : '현재 맵 불러옴 · 수정 시 THE WAR에 자동 반영';
+      ? 'THE WAR WorldField 불러옴 · 지형/산맥/해수면 1:1'
+      : '기본 WorldField 불러옴 · 수정 시 THE WAR에 자동 반영';
     root.innerHTML = `
       <div class="terrain-editor-topbar">
         <div class="terrain-editor-title">
           <strong>TERRAIN LAB</strong>
-          <span>THE WAR</span>
+          <span>THE WAR · WORLD FIELD</span>
         </div>
         <div class="terrain-editor-actions">
           <label class="terrain-editor-button terrain-editor-file">
@@ -248,20 +268,12 @@ export class TerrainEditor {
         </div>
         <div class="terrain-editor-sliders">
           <label>
-            <span>브러시 <output id="brush-size-output">10</output></span>
-            <input id="brush-size" type="range" min="3" max="28" step="1" value="10" />
+            <span>브러시 <output id="brush-size-output">12</output></span>
+            <input id="brush-size" type="range" min="3" max="45" step="1" value="12" />
           </label>
           <label>
             <span>강도 <output id="brush-strength-output">22</output></span>
             <input id="brush-strength" type="range" min="4" max="60" step="1" value="22" />
-          </label>
-          <label>
-            <span>산 높이 <output id="height-scale-output">8.0</output></span>
-            <input id="height-scale" type="range" min="3" max="20" step="0.5" value="8" />
-          </label>
-          <label>
-            <span>해수면 <output id="sea-level-output">8.5%</output></span>
-            <input id="sea-level" type="range" min="0" max="30" step="0.5" value="8.5" />
           </label>
         </div>
         <div class="terrain-editor-history">
@@ -271,7 +283,7 @@ export class TerrainEditor {
         </div>
       </div>
 
-      <div class="terrain-editor-hint">VIEW: 한 손가락 이동 · 핀치 줌 · 두 손가락 비틀기 회전 · 두 손가락 세로 드래그 기울기 · SCULPT: 한 손가락 지형 편집 · 편집 완료 시 THE WAR 자동 저장</div>
+      <div class="terrain-editor-hint">THE WAR와 같은 420×420 WorldField · 같은 257² 높이 그리드 · 같은 해수면/전략 산맥 · 편집 완료 시 자동 저장</div>
     `;
     return root;
   }
@@ -290,7 +302,9 @@ export class TerrainEditor {
       this.redoStack.length = 0;
       clearWorldHeightmapOverride();
       this.loadedSharedOverride = false;
-      this.markGeometryDirty('원본 heightmap으로 복원 · THE WAR에도 반영됨');
+      reloadWorldHeightmapFromStorage();
+      this.refreshWorldMaterials();
+      this.markGeometryDirty('원본 WorldField로 복원 · THE WAR에도 반영됨');
     });
 
     this.uiRoot.querySelector('#terrain-export')?.addEventListener('click', () => this.exportHeightmap());
@@ -326,16 +340,6 @@ export class TerrainEditor {
     this.bindRange('brush-strength', 'brush-strength-output', (value) => {
       this.brushStrength = value / 1000;
       return value.toFixed(0);
-    });
-    this.bindRange('height-scale', 'height-scale-output', (value) => {
-      this.heightScale = value;
-      this.markGeometryDirty();
-      return value.toFixed(1);
-    });
-    this.bindRange('sea-level', 'sea-level-output', (value) => {
-      this.seaLevel = value / 100;
-      this.markGeometryDirty();
-      return `${value.toFixed(1)}%`;
     });
   }
 
@@ -425,7 +429,9 @@ export class TerrainEditor {
       return;
     }
 
-    if (this.mode === 'view' && this.pointers.size === 1) this.handleSinglePointerView(event.clientX, event.clientY);
+    if (this.mode === 'view' && this.pointers.size === 1) {
+      this.handleSinglePointerView(event.clientX, event.clientY);
+    }
   };
 
   private readonly onPointerUp = (event: PointerEvent): void => {
@@ -441,7 +447,7 @@ export class TerrainEditor {
       this.touchGesture.reset();
     }
 
-    if (shouldPersist) this.persistWorldHeightmap('THE WAR에 자동 저장됨');
+    if (shouldPersist) this.persistWorldHeightmap('WorldField 저장 완료 · THE WAR와 동일');
     this.strokeSnapshotTaken = false;
     if (this.pointers.size === 0 && this.mode === 'sculpt') this.brushRing.visible = false;
   };
@@ -550,20 +556,27 @@ export class TerrainEditor {
   }
 
   private applyBrush(worldX: number, worldZ: number): void {
-    const centerX = ((worldX / WORLD_SIZE) + 0.5) * (DATA_SIZE - 1);
-    const centerY = ((worldZ / WORLD_SIZE) + 0.5) * (DATA_SIZE - 1);
-    const radiusSamples = (this.brushRadius / WORLD_SIZE) * (DATA_SIZE - 1);
-    const minX = Math.max(0, Math.floor(centerX - radiusSamples));
-    const maxX = Math.min(DATA_SIZE - 1, Math.ceil(centerX + radiusSamples));
-    const minY = Math.max(0, Math.floor(centerY - radiusSamples));
-    const maxY = Math.min(DATA_SIZE - 1, Math.ceil(centerY + radiusSamples));
+    const centerX = ((worldX + WORLD_HALF_WIDTH) / WORLD_WIDTH) * (DATA_SIZE - 1);
+    // Heightmap row 0 is the north/top edge. Production WorldField uses the same
+    // flipped Z mapping; the old editor used +Z and was vertically mirrored.
+    const centerY = ((WORLD_HALF_DEPTH - worldZ) / WORLD_DEPTH) * (DATA_SIZE - 1);
+    const sampleWorldX = WORLD_WIDTH / (DATA_SIZE - 1);
+    const sampleWorldZ = WORLD_DEPTH / (DATA_SIZE - 1);
+    const radiusX = this.brushRadius / sampleWorldX;
+    const radiusY = this.brushRadius / sampleWorldZ;
+    const minX = Math.max(0, Math.floor(centerX - radiusX));
+    const maxX = Math.min(DATA_SIZE - 1, Math.ceil(centerX + radiusX));
+    const minY = Math.max(0, Math.floor(centerY - radiusY));
+    const maxY = Math.min(DATA_SIZE - 1, Math.ceil(centerY + radiusY));
     const source = this.tool === 'smooth' ? this.heights.slice() : this.heights;
 
     for (let y = minY; y <= maxY; y += 1) {
       for (let x = minX; x <= maxX; x += 1) {
-        const distance = Math.hypot(x - centerX, y - centerY);
-        if (distance > radiusSamples) continue;
-        const falloff = Math.pow(1 - distance / Math.max(0.0001, radiusSamples), 1.65);
+        const dx = (x - centerX) * sampleWorldX;
+        const dz = (y - centerY) * sampleWorldZ;
+        const distance = Math.hypot(dx, dz);
+        if (distance > this.brushRadius) continue;
+        const falloff = Math.pow(1 - distance / Math.max(0.0001, this.brushRadius), 1.65);
         const index = y * DATA_SIZE + x;
         const current = this.heightAtIndex(index);
         let next = current;
@@ -571,11 +584,19 @@ export class TerrainEditor {
         if (this.tool === 'raise') next = current + this.brushStrength * falloff;
         if (this.tool === 'lower') next = current - this.brushStrength * falloff;
         if (this.tool === 'flatten') {
-          next = THREE.MathUtils.lerp(current, this.flattenTarget, Math.min(0.5, this.brushStrength * 10) * falloff);
+          next = THREE.MathUtils.lerp(
+            current,
+            this.flattenTarget,
+            Math.min(0.5, this.brushStrength * 10) * falloff,
+          );
         }
         if (this.tool === 'smooth') {
           const average = neighborAverage(source, x, y, DATA_SIZE);
-          next = THREE.MathUtils.lerp(current, average, Math.min(0.72, this.brushStrength * 14) * falloff);
+          next = THREE.MathUtils.lerp(
+            current,
+            average,
+            Math.min(0.72, this.brushStrength * 14) * falloff,
+          );
         }
 
         this.heights[index] = THREE.MathUtils.clamp(next, 0, 1);
@@ -609,31 +630,49 @@ export class TerrainEditor {
   }
 
   private clampTarget(): void {
-    const clamp = WORLD_SIZE * 0.43;
-    this.target.x = THREE.MathUtils.clamp(this.target.x, -clamp, clamp);
-    this.target.z = THREE.MathUtils.clamp(this.target.z, -clamp, clamp);
+    this.target.x = THREE.MathUtils.clamp(
+      this.target.x,
+      -WORLD_HALF_WIDTH * 0.9,
+      WORLD_HALF_WIDTH * 0.9,
+    );
+    this.target.z = THREE.MathUtils.clamp(
+      this.target.z,
+      -WORLD_HALF_DEPTH * 0.9,
+      WORLD_HALF_DEPTH * 0.9,
+    );
   }
 
   private normalizedHeightAtWorld(x: number, z: number): number {
-    const u = THREE.MathUtils.clamp(x / WORLD_SIZE + 0.5, 0, 1);
-    const v = THREE.MathUtils.clamp(z / WORLD_SIZE + 0.5, 0, 1);
+    const u = THREE.MathUtils.clamp((x + WORLD_HALF_WIDTH) / WORLD_WIDTH, 0, 1);
+    const v = THREE.MathUtils.clamp((WORLD_HALF_DEPTH - z) / WORLD_DEPTH, 0, 1);
     return bilinearSampleFloat(this.heights, DATA_SIZE, DATA_SIZE, u, v);
   }
 
   private updateTerrainGeometry(): void {
     this.geometryDirty = false;
-    const geometry = this.terrain.geometry as THREE.PlaneGeometry;
-    const positions = geometry.attributes.position as THREE.BufferAttribute;
+    const positions = this.terrain.geometry.attributes.position as THREE.BufferAttribute;
 
     for (let i = 0; i < positions.count; i += 1) {
       const x = positions.getX(i);
       const z = positions.getZ(i);
-      const normalized = this.normalizedHeightAtWorld(x, z);
-      positions.setY(i, (normalized - this.seaLevel) * this.heightScale);
+      const raw = this.normalizedHeightAtWorld(x, z);
+      positions.setY(i, terrainHeightFromRawValue(x, z, raw));
     }
     positions.needsUpdate = true;
-    geometry.computeVertexNormals();
-    geometry.computeBoundingSphere();
+    this.terrain.geometry.computeVertexNormals();
+    this.terrain.geometry.computeBoundingBox();
+    this.terrain.geometry.computeBoundingSphere();
+  }
+
+  private refreshWorldMaterials(): void {
+    clearTerrainBlendControlMapCache();
+
+    const previousTerrain = this.terrain.material;
+    const previousWater = this.water.material;
+    this.terrain.material = this.createTerrainMaterial();
+    this.water.material = this.createWaterMaterial();
+    previousTerrain.dispose();
+    previousWater.dispose();
   }
 
   private pushUndoSnapshot(): void {
@@ -647,7 +686,7 @@ export class TerrainEditor {
     this.redoStack.push(this.heights.slice());
     this.heights.set(previous);
     this.markGeometryDirty();
-    this.persistWorldHeightmap('되돌림 · THE WAR에 반영됨');
+    this.persistWorldHeightmap('되돌림 · THE WAR WorldField에 반영됨');
   }
 
   private redo(): void {
@@ -656,7 +695,7 @@ export class TerrainEditor {
     this.undoStack.push(this.heights.slice());
     this.heights.set(next);
     this.markGeometryDirty();
-    this.persistWorldHeightmap('다시 적용 · THE WAR에 반영됨');
+    this.persistWorldHeightmap('다시 적용 · THE WAR WorldField에 반영됨');
   }
 
   private async loadHeightmap(file: File): Promise<void> {
@@ -684,7 +723,7 @@ export class TerrainEditor {
       this.undoStack.length = 0;
       this.redoStack.length = 0;
       this.markGeometryDirty();
-      this.persistWorldHeightmap(`${file.name} · 257² · THE WAR에 반영됨`);
+      this.persistWorldHeightmap(`${file.name} · 257² · THE WAR WorldField에 반영됨`);
     } catch (error) {
       if (status) status.textContent = `불러오기 실패: ${error instanceof Error ? error.message : 'unknown error'}`;
     }
@@ -716,12 +755,23 @@ export class TerrainEditor {
 
   private persistWorldHeightmap(status?: string): void {
     const saved = writeWorldHeightmapOverride(this.heights, DATA_SIZE, DATA_SIZE);
-    if (saved) {
-      this.loadedSharedOverride = true;
-      if (status) this.setStatus(status);
+    if (!saved) {
+      this.setStatus('THE WAR 저장 실패 · 브라우저 저장공간을 확인해줘');
       return;
     }
-    this.setStatus('THE WAR 저장 실패 · 브라우저 저장공간을 확인해줘');
+
+    // Re-read the quantized bytes we actually persisted. From this point Terrain
+    // Lab and a freshly loaded THE WAR consume byte-identical source data.
+    const shared = readWorldHeightmapOverride();
+    if (shared) {
+      fillResampledHeightmap(this.heights, shared.bytes, shared.width, shared.height);
+    }
+
+    reloadWorldHeightmapFromStorage();
+    this.refreshWorldMaterials();
+    this.geometryDirty = true;
+    this.loadedSharedOverride = true;
+    if (status) this.setStatus(status);
   }
 
   private markGeometryDirty(status?: string): void {
@@ -818,7 +868,11 @@ function bilinearSampleFloat(
   const b = values[y0 * width + x1] ?? 0;
   const c = values[y1 * width + x0] ?? 0;
   const d = values[y1 * width + x1] ?? 0;
-  return THREE.MathUtils.lerp(THREE.MathUtils.lerp(a, b, tx), THREE.MathUtils.lerp(c, d, tx), ty);
+  return THREE.MathUtils.lerp(
+    THREE.MathUtils.lerp(a, b, tx),
+    THREE.MathUtils.lerp(c, d, tx),
+    ty,
+  );
 }
 
 function neighborAverage(values: Float32Array, x: number, y: number, width: number): number {
