@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 
-const SAMPLE_SIZE = 120;
+const SAMPLE_SIZE = 90;
 const MIN_PIXEL_RATIO = 1;
-const MAX_PIXEL_RATIO = 2;
+const MAX_PIXEL_RATIO = 1.5;
+const ADJUST_EVERY_FRAMES = 90;
 
 export class RenderPerformance {
   private readonly intervals: number[] = [];
@@ -11,7 +12,7 @@ export class RenderPerformance {
   private framesSinceAdjustment = 0;
 
   constructor(private readonly renderer: THREE.WebGLRenderer) {
-    this.pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
+    this.pixelRatio = Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO);
     this.renderer.setPixelRatio(this.pixelRatio);
   }
 
@@ -27,7 +28,7 @@ export class RenderPerformance {
     this.lastTimestamp = timestamp;
     this.framesSinceAdjustment += 1;
 
-    if (this.intervals.length < 60 || this.framesSinceAdjustment < 120) return;
+    if (this.intervals.length < 60 || this.framesSinceAdjustment < ADJUST_EVERY_FRAMES) return;
     this.framesSinceAdjustment = 0;
     this.adjustPixelRatio();
   }
@@ -45,18 +46,21 @@ export class RenderPerformance {
     const refreshHz = this.estimatedRefreshHz >= 90 ? 120 : 60;
     const budget = 1000 / refreshHz;
 
-    let next = this.pixelRatio;
-    if (typical > budget * 1.28) {
-      next -= 0.15;
-    } else if (typical < budget * 1.08) {
-      next += 0.08;
-    }
+    // Avoid the old up/down pixel-ratio oscillation. Reallocating the drawing
+    // buffer while the user is moving the map causes a visible hitch on iPad.
+    // Start sharp at 1.5x and only step down when sustained frame time is poor.
+    if (typical <= budget * 1.2 || this.pixelRatio <= MIN_PIXEL_RATIO) return;
 
-    next = Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO, Math.max(MIN_PIXEL_RATIO, next));
+    const next = Math.min(
+      window.devicePixelRatio || 1,
+      MAX_PIXEL_RATIO,
+      Math.max(MIN_PIXEL_RATIO, this.pixelRatio - 0.12),
+    );
     if (Math.abs(next - this.pixelRatio) < 0.05) return;
 
     this.pixelRatio = next;
     this.renderer.setPixelRatio(this.pixelRatio);
+    this.intervals.length = 0;
   }
 }
 
