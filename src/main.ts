@@ -37,17 +37,14 @@ function installSharedTerrainReload(): void {
 
 function installTouchPlatformGuards(): void {
   const blockNativeZoom: EventListener = (event) => event.preventDefault();
-  const blockNativePinch = (event: TouchEvent): void => {
-    if (event.touches.length > 1) event.preventDefault();
-  };
 
-  // iOS/iPadOS Safari may still start its native page gesture even with
-  // touch-action:none on the canvas. THE WAR and Terrain Lab both own their
-  // two-pointer camera gestures, so keep the browser from stealing them.
+  // The canvas already owns touch input with touch-action:none. Blocking every
+  // document touchmove used to compete with pointer-based camera controls on
+  // iPadOS. Only suppress Safari's native page zoom gestures here and leave the
+  // actual pointer stream untouched for Three.js controls.
   for (const eventName of ['gesturestart', 'gesturechange', 'gestureend']) {
     document.addEventListener(eventName, blockNativeZoom, { passive: false });
   }
-  document.addEventListener('touchmove', blockNativePinch, { passive: false });
   document.addEventListener('dblclick', blockNativeZoom, { passive: false });
 }
 
