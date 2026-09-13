@@ -45,27 +45,29 @@ export interface RiverDefinition {
   mouthWidth: number;
 }
 
-// The authored heightmap already contains the major channels and inland water.
-// Keep the legacy river contract for downstream modules, but do not overlay a
-// second procedural river network on top of the authored terrain.
 export const RIVERS: readonly RiverDefinition[] = [];
 
-const STORED_HEIGHTMAP = readWorldHeightmapOverride();
-const HEIGHT_BYTES = STORED_HEIGHTMAP?.bytes ?? decodeHeightmapBase64(WORLD_HEIGHTMAP_U8);
-const HEIGHTMAP_WIDTH = STORED_HEIGHTMAP?.width ?? WORLD_HEIGHTMAP_WIDTH;
-const HEIGHTMAP_HEIGHT = STORED_HEIGHTMAP?.height ?? WORLD_HEIGHTMAP_HEIGHT;
-const EXPECTED_SAMPLES = HEIGHTMAP_WIDTH * HEIGHTMAP_HEIGHT;
 const LAND_THRESHOLD = 0.028;
 const MAX_LAND_HEIGHT = 12.2;
+const AUTHORED_HEIGHT_BYTES = decodeHeightmapBase64(WORLD_HEIGHTMAP_U8);
 
-if (HEIGHT_BYTES.length !== EXPECTED_SAMPLES) {
-  throw new Error(
-    `World heightmap is incomplete: expected ${EXPECTED_SAMPLES} samples, got ${HEIGHT_BYTES.length}.`,
+let HEIGHT_BYTES = AUTHORED_HEIGHT_BYTES;
+let HEIGHTMAP_WIDTH = WORLD_HEIGHTMAP_WIDTH;
+let HEIGHTMAP_HEIGHT = WORLD_HEIGHTMAP_HEIGHT;
+let EXPECTED_SAMPLES = HEIGHTMAP_WIDTH * HEIGHTMAP_HEIGHT;
+let WATER_DISTANCE_CELLS = new Uint8Array(EXPECTED_SAMPLES);
+let LAND_DISTANCE_CELLS = new Uint8Array(EXPECTED_SAMPLES);
+
+reloadWorldHeightmapFromStorage();
+
+export function reloadWorldHeightmapFromStorage(): void {
+  const stored = readWorldHeightmapOverride();
+  applyHeightmapSource(
+    stored?.bytes ?? AUTHORED_HEIGHT_BYTES,
+    stored?.width ?? WORLD_HEIGHTMAP_WIDTH,
+    stored?.height ?? WORLD_HEIGHTMAP_HEIGHT,
   );
 }
-
-const WATER_DISTANCE_CELLS = createDistanceField('water');
-const LAND_DISTANCE_CELLS = createDistanceField('land');
 
 export function terrainSampleAt(x: number, z: number): TerrainSample {
   const raw = heightmapValueAt(x, z);
@@ -88,6 +90,10 @@ export function terrainSampleAt(x: number, z: number): TerrainSample {
 export function terrainHeight(x: number, z: number): number {
   const raw = heightmapValueAt(x, z);
   return terrainHeightFromRawAt(x, z, raw);
+}
+
+export function terrainHeightFromRawValue(x: number, z: number, raw: number): number {
+  return terrainHeightFromRawAt(x, z, clamp01(raw));
 }
 
 export function islandSignal(x: number, z: number): number {
@@ -177,18 +183,34 @@ export function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
+function applyHeightmapSource(bytes: Uint8Array, width: number, height: number): void {
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 2 || height < 2) {
+    throw new Error(`Invalid world heightmap dimensions: ${width}x${height}.`);
+  }
+
+  const expectedSamples = width * height;
+  if (bytes.length !== expectedSamples) {
+    throw new Error(
+      `World heightmap is incomplete: expected ${expectedSamples} samples, got ${bytes.length}.`,
+    );
+  }
+
+  HEIGHT_BYTES = bytes;
+  HEIGHTMAP_WIDTH = width;
+  HEIGHTMAP_HEIGHT = height;
+  EXPECTED_SAMPLES = expectedSamples;
+  WATER_DISTANCE_CELLS = createDistanceField('water');
+  LAND_DISTANCE_CELLS = createDistanceField('land');
+}
+
 function terrainHeightFromRawAt(x: number, z: number, raw: number): number {
   if (raw <= LAND_THRESHOLD) {
     const waterDepth = 1 - clamp01(raw / LAND_THRESHOLD);
-    // Keep the lake/ocean bed close to the water plane at the shoreline, then
-    // deepen it progressively. The old +/-0.24 jump produced a visible cliff ring.
     return SEA_LEVEL - 0.035 - waterDepth * 2.25;
   }
 
   const normalized = clamp01((raw - LAND_THRESHOLD) / (1 - LAND_THRESHOLD));
   const shaped = Math.pow(normalized, 1.14);
-  // Land now begins only slightly above sea level so shoreline vertices meet the
-  // water surface naturally instead of stepping up by half a world unit.
   const baseHeight = SEA_LEVEL + 0.045 + shaped * MAX_LAND_HEIGHT;
   const landInterior = smoothRange(raw, LAND_THRESHOLD + 0.012, 0.19);
   const strategicRelief = strategicMountainReliefAt(x, z, landInterior);
@@ -230,7 +252,6 @@ function moistureFromValues(
 function roughnessFromValues(x: number, z: number, height: number, raw: number): number {
   if (raw <= LAND_THRESHOLD) return 0;
 
-  // Keep the slope sampling footprint stable across authored and Terrain Lab data.
   const gradient = heightGradientAt(x, z);
   const slope = smoothRange(gradient, 0.012, 0.086);
   const elevation = smoothRange(height, 4.8, 13.8);
