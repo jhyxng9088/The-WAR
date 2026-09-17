@@ -68,7 +68,7 @@ function createLand(): THREE.Mesh {
   const mesh = new THREE.Mesh(
     geometry,
     createWorldTerrainSurfaceMaterial({
-      detailRepeat: 128,
+      detailRepeat: 512,
       roughness: 0.9,
       seaLevel: SEA_LEVEL,
       controlMapSize: 512,
