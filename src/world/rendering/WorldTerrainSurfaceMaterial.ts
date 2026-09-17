@@ -166,12 +166,31 @@ vec2 terrainWarpedUv( float scale, float angle, vec2 offset ) {
     worldXZ.x / terrainWorldWidth,
     worldXZ.y / terrainWorldDepth
   );
-  vec2 warp = vec2(
-    terrainNoise( worldXZ * 0.021 + vec2( 7.1, 3.7 ) ),
-    terrainNoise( worldXZ * 0.019 + vec2( -5.4, 11.3 ) )
+  vec2 broadWarp = vec2(
+    terrainNoise( worldXZ * 0.021 + vec2( 7.1, 3.7 ) + offset * 0.071 ),
+    terrainNoise( worldXZ * 0.019 + vec2( -5.4, 11.3 ) + offset * 0.053 )
   ) - 0.5;
-  vec2 uv = normalizedWorld * terrainRepeat * scale + warp * 0.72;
+  vec2 fineWarp = vec2(
+    terrainNoise( worldXZ * 0.083 + vec2( 13.2, -7.4 ) + offset * 0.113 ),
+    terrainNoise( worldXZ * 0.071 + vec2( -9.6, 5.8 ) + offset * 0.097 )
+  ) - 0.5;
+  vec2 uv = normalizedWorld * terrainRepeat * scale + broadWarp * 0.18 + fineWarp * 0.11;
   return terrainRotation( angle ) * uv + offset;
+}
+
+vec3 terrainAntiTile( sampler2D tex, vec2 uv, vec2 worldXZ, float seed ) {
+  vec2 alternateUv =
+    terrainRotation( 1.17 + seed * 0.23 ) * ( uv * 1.071 )
+    + vec2( 17.3 + seed * 6.1, -11.7 + seed * 4.9 );
+  float blendNoise = terrainNoise(
+    worldXZ * 0.041 + vec2( seed * 7.3, -seed * 5.9 )
+  );
+  float blend = mix( 0.30, 0.54, blendNoise );
+  return mix(
+    texture2D( tex, uv ).rgb,
+    texture2D( tex, alternateUv ).rgb,
+    blend
+  );
 }
 
 vec3 terrainTriplanar( sampler2D tex, vec3 position, vec3 normal, float scale ) {
@@ -331,8 +350,7 @@ terrainSurfaceWeights(
   terrainWetShoreFactor
 );
 
-vec2 grassUvA = terrainWarpedUv( 1.00, 0.18, vec2( 1.7, 8.9 ) );
-vec2 grassUvB = terrainWarpedUv( 0.43, -0.62, vec2( 14.2, 3.6 ) );
+vec2 grassUv = terrainWarpedUv( 1.00, 0.18, vec2( 1.7, 8.9 ) );
 vec2 forestUv = terrainWarpedUv( 0.82, -0.31, vec2( 7.8, 16.4 ) );
 vec2 dryForestUv = terrainWarpedUv( 0.76, 0.49, vec2( 3.3, 21.8 ) );
 vec2 mossUv = terrainWarpedUv( 0.61, 0.74, vec2( 18.1, 5.3 ) );
@@ -342,15 +360,13 @@ vec2 rockUv = terrainWarpedUv( 0.67, 0.46, vec2( 4.1, 13.9 ) );
 vec2 sandUv = terrainWarpedUv( 0.74, -0.17, vec2( 10.6, 19.7 ) );
 vec2 snowUv = terrainWarpedUv( 0.56, 0.27, vec2( 6.3, 11.5 ) );
 
-vec3 grassFine = texture2D( terrainGrass, grassUvA ).rgb;
-vec3 grassMacro = texture2D( terrainGrass, grassUvB ).rgb;
-vec3 dryForestColor = texture2D( terrainDryForest, dryForestUv ).rgb;
-float grassMacroBlend = 0.16 + terrainNoise( vTerrainLocalPosition.xz * 0.014 ) * 0.18;
-vec3 grassColor = mix( grassFine, grassMacro, grassMacroBlend );
-vec3 forestColor = texture2D( terrainForest, forestUv ).rgb;
+vec2 terrainXZ = vTerrainLocalPosition.xz;
+vec3 grassColor = terrainAntiTile( terrainGrass, grassUv, terrainXZ, 0.17 );
+vec3 dryForestColor = terrainAntiTile( terrainDryForest, dryForestUv, terrainXZ, 1.13 );
+vec3 forestColor = terrainAntiTile( terrainForest, forestUv, terrainXZ, 2.07 );
 vec3 mossRockColor = texture2D( terrainMossRock, mossUv ).rgb;
-vec3 dirtColor = texture2D( terrainDirt, dirtUv ).rgb;
-vec3 mudColor = texture2D( terrainMud, mudUv ).rgb;
+vec3 dirtColor = terrainAntiTile( terrainDirt, dirtUv, terrainXZ, 3.19 );
+vec3 mudColor = terrainAntiTile( terrainMud, mudUv, terrainXZ, 4.11 );
 vec3 rockGroundColor = texture2D( terrainRockGround, rockUv ).rgb;
 vec3 cliffColor = terrainTriplanar(
   terrainCliffRock,
@@ -361,8 +377,11 @@ vec3 cliffColor = terrainTriplanar(
 vec3 sandColor = texture2D( terrainCoastSand, sandUv ).rgb;
 vec3 snowColor = texture2D( terrainSnow, snowUv ).rgb;
 
-float dryVariantNoise = terrainNoise( vTerrainLocalPosition.xz * 0.037 + vec2( 9.7, -4.3 ) );
-float wetVariantNoise = terrainNoise( vTerrainLocalPosition.xz * 0.043 + vec2( -12.6, 15.2 ) );
+float grassMacroVariation = terrainNoise( terrainXZ * 0.014 + vec2( 6.8, -3.1 ) );
+grassColor *= mix( 0.965, 1.035, grassMacroVariation );
+
+float dryVariantNoise = terrainNoise( terrainXZ * 0.037 + vec2( 9.7, -4.3 ) );
+float wetVariantNoise = terrainNoise( terrainXZ * 0.043 + vec2( -12.6, 15.2 ) );
 float dryVariant = smoothstep( 0.42, 0.84, terrainRegionalDryness ) * mix( 0.28, 0.78, dryVariantNoise );
 float mudVariant = smoothstep( 0.56, 0.90, terrainRegionalMoisture ) * mix( 0.18, 0.72, wetVariantNoise );
 
@@ -388,8 +407,8 @@ vec3 terrainAlbedo =
   snowColor * terrainSecondary.w;
 
 // Two unrelated low-frequency fields break visible rectangular/blotchy control-map regions.
-float macroA = terrainNoise( vTerrainLocalPosition.xz * 0.010 + vec2( 3.4, 9.2 ) );
-float macroB = terrainNoise( vTerrainLocalPosition.xz * 0.024 + vec2( 17.1, -5.8 ) );
+float macroA = terrainNoise( terrainXZ * 0.010 + vec2( 3.4, 9.2 ) );
+float macroB = terrainNoise( terrainXZ * 0.024 + vec2( 17.1, -5.8 ) );
 float macroLight = mix( 0.94, 1.05, macroA * 0.68 + macroB * 0.32 );
 terrainAlbedo *= macroLight;
 diffuseColor.rgb *= terrainAlbedo;`,
@@ -399,7 +418,7 @@ diffuseColor.rgb *= terrainAlbedo;`,
   };
 
   material.customProgramCacheKey = () =>
-    `world-terrain-natural-blend-v3:${repeat}:${seaLevel}:${options.controlMapSize ?? 512}`;
+    `world-terrain-natural-blend-v4:${repeat}:${seaLevel}:${options.controlMapSize ?? 512}`;
 
   return material;
 }
