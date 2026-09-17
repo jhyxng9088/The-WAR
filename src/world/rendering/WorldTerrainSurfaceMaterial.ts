@@ -11,23 +11,41 @@ interface WorldTerrainSurfaceMaterialOptions {
 }
 
 interface TerrainTextureSet {
-  ground: THREE.Texture;
-  soil: THREE.Texture;
-  rock: THREE.Texture;
-  sand: THREE.Texture;
+  grass: THREE.Texture;
+  forest: THREE.Texture;
+  dryForest: THREE.Texture;
+  mossRock: THREE.Texture;
+  dirt: THREE.Texture;
+  mud: THREE.Texture;
+  rockGround: THREE.Texture;
+  cliffRock: THREE.Texture;
+  coastSand: THREE.Texture;
+  snow: THREE.Texture;
 }
 
 const TERRAIN_TEXTURE_URLS = {
-  // Four close-range detail sources only. Strategic zoom uses procedural macro
-  // color, so repeated photo tiles cannot become a map-scale pattern.
-  ground:
+  // Poly Haven CC0 1K diffuse textures. Keep the sampler count below the common
+  // mobile WebGL fragment limit while giving each climate band multiple surfaces.
+  grass:
     'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/sparse_grass/sparse_grass_diff_1k.jpg',
-  soil:
+  forest:
+    'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/forrest_ground_01/forrest_ground_01_diff_1k.jpg',
+  dryForest:
+    'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/forrest_ground_03/forrest_ground_03_diff_1k.jpg',
+  mossRock:
+    'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/aerial_grass_rock/aerial_grass_rock_diff_1k.jpg',
+  dirt:
     'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/dirt/dirt_diff_1k.jpg',
-  rock:
+  mud:
+    'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/brown_mud_rocks_01/brown_mud_rocks_01_diff_1k.jpg',
+  rockGround:
     'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rock_ground/rock_ground_diff_1k.jpg',
-  sand:
+  cliffRock:
+    'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rock_06/rock_06_diff_1k.jpg',
+  coastSand:
     'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/coast_sand_01/coast_sand_01_diff_1k.jpg',
+  snow:
+    'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/snow_04/snow_04_diff_1k.jpg',
 } as const;
 
 let cachedTextures: TerrainTextureSet | null = null;
@@ -49,15 +67,22 @@ export function createWorldTerrainSurfaceMaterial(
   });
 
   material.onBeforeCompile = (shader) => {
-    shader.uniforms.terrainGroundDetail = { value: textures.ground };
-    shader.uniforms.terrainSoilDetail = { value: textures.soil };
-    shader.uniforms.terrainRockDetail = { value: textures.rock };
-    shader.uniforms.terrainSandDetail = { value: textures.sand };
+    shader.uniforms.terrainGrass = { value: textures.grass };
+    shader.uniforms.terrainForest = { value: textures.forest };
+    shader.uniforms.terrainDryForest = { value: textures.dryForest };
+    shader.uniforms.terrainMossRock = { value: textures.mossRock };
+    shader.uniforms.terrainDirt = { value: textures.dirt };
+    shader.uniforms.terrainMud = { value: textures.mud };
+    shader.uniforms.terrainRockGround = { value: textures.rockGround };
+    shader.uniforms.terrainCliffRock = { value: textures.cliffRock };
+    shader.uniforms.terrainCoastSand = { value: textures.coastSand };
+    shader.uniforms.terrainSnow = { value: textures.snow };
     shader.uniforms.terrainRegionalControl = { value: controls.regional };
     shader.uniforms.terrainFeatureControl = { value: controls.features };
     shader.uniforms.terrainWorldWidth = { value: WORLD_WIDTH };
     shader.uniforms.terrainWorldDepth = { value: WORLD_DEPTH };
     shader.uniforms.terrainRepeat = { value: repeat };
+    shader.uniforms.terrainSeaLevel = { value: seaLevel };
     shader.uniforms.terrainRiverDistanceMax = { value: controls.riverDistanceMax };
 
     shader.vertexShader = shader.vertexShader.replace(
@@ -78,15 +103,22 @@ export function createWorldTerrainSurfaceMaterial(
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <common>',
       `#include <common>
-uniform sampler2D terrainGroundDetail;
-uniform sampler2D terrainSoilDetail;
-uniform sampler2D terrainRockDetail;
-uniform sampler2D terrainSandDetail;
+uniform sampler2D terrainGrass;
+uniform sampler2D terrainForest;
+uniform sampler2D terrainDryForest;
+uniform sampler2D terrainMossRock;
+uniform sampler2D terrainDirt;
+uniform sampler2D terrainMud;
+uniform sampler2D terrainRockGround;
+uniform sampler2D terrainCliffRock;
+uniform sampler2D terrainCoastSand;
+uniform sampler2D terrainSnow;
 uniform sampler2D terrainRegionalControl;
 uniform sampler2D terrainFeatureControl;
 uniform float terrainWorldWidth;
 uniform float terrainWorldDepth;
 uniform float terrainRepeat;
+uniform float terrainSeaLevel;
 uniform float terrainRiverDistanceMax;
 varying vec3 vTerrainLocalPosition;
 varying vec3 vTerrainLocalNormal;
@@ -112,16 +144,6 @@ mat2 terrainRotation( float angle ) {
   return mat2( c, -s, s, c );
 }
 
-float terrainFbm( vec2 p ) {
-  float value = 0.0;
-  value += terrainNoise( p ) * 0.55;
-  p = terrainRotation( 0.61 ) * p * 2.07 + vec2( 17.3, -8.1 );
-  value += terrainNoise( p ) * 0.30;
-  p = terrainRotation( -0.43 ) * p * 2.11 + vec2( -6.4, 13.7 );
-  value += terrainNoise( p ) * 0.15;
-  return value;
-}
-
 float terrainBroadRegion( vec2 positionXZ, vec2 center, vec2 radius ) {
   vec2 n = ( positionXZ - center ) / radius;
   return exp( -dot( n, n ) * 2.15 );
@@ -138,52 +160,87 @@ vec2 terrainControlUv() {
   );
 }
 
-vec2 terrainDetailUv( float scale, float angle, vec2 offset ) {
+vec2 terrainWarpedUv( float scale, float angle, vec2 offset ) {
   vec2 worldXZ = vTerrainLocalPosition.xz;
   vec2 normalizedWorld = vec2(
     worldXZ.x / terrainWorldWidth,
     worldXZ.y / terrainWorldDepth
   );
-  vec2 microWarp = vec2(
-    terrainFbm( worldXZ * 0.118 + vec2( 9.4, -3.8 ) ),
-    terrainFbm( worldXZ * 0.107 + vec2( -5.1, 12.6 ) )
+  vec2 fineWarp = vec2(
+    terrainNoise( worldXZ * 0.083 + vec2( 13.2, -7.4 ) + offset * 0.113 ),
+    terrainNoise( worldXZ * 0.071 + vec2( -9.6, 5.8 ) + offset * 0.097 )
   ) - 0.5;
-  vec2 uv = normalizedWorld * terrainRepeat * scale + microWarp * 0.045;
+  vec2 uv = normalizedWorld * terrainRepeat * scale + fineWarp * 0.035;
   return terrainRotation( angle ) * uv + offset;
 }
 
-float terrainDetailModulation( sampler2D tex, vec2 uv, float contrast ) {
-  vec3 sampleColor = texture2D( tex, uv ).rgb;
-  float luminance = dot( sampleColor, vec3( 0.2126, 0.7152, 0.0722 ) );
-  return mix( 1.0 - contrast, 1.0 + contrast, luminance );
+vec3 terrainFilteredSample( sampler2D tex, vec2 uv ) {
+  // Positive mip bias suppresses the high-frequency photo pattern when hundreds
+  // of repeats are minified into the strategic camera view. The UV scale stays
+  // unchanged, so close-up physical scale remains the same.
+  return texture2D( tex, uv, 1.35 ).rgb;
 }
 
-float terrainRockTriplanarModulation( vec3 position, vec3 normal, float scale, float contrast ) {
+vec3 terrainAntiTileSample(
+  sampler2D tex,
+  vec2 uv,
+  vec2 worldXZ,
+  float seed,
+  float bias
+) {
+  // Only mountain/coast surfaces use this path. A smooth world-space phase warp
+  // breaks long straight tile rows, while an irregular orientation switch keeps
+  // one repeated photo from remaining coherent across a whole mountain or shore.
+  vec2 phaseWarp = vec2(
+    terrainNoise( worldXZ * 0.115 + vec2( seed * 2.3 + 7.1, -11.6 ) ),
+    terrainNoise( worldXZ * 0.097 + vec2( 13.4, seed * 3.7 - 5.8 ) )
+  ) - 0.5;
+  phaseWarp *= 1.12;
+
+  float selector = terrainNoise(
+    worldXZ * 0.061 + vec2( seed * 9.7 + 3.4, -seed * 6.1 + 12.8 )
+  );
+  float blend = smoothstep( 0.42, 0.58, selector );
+
+  vec2 uvA = terrainRotation( 0.19 + seed * 0.23 ) * uv
+    + phaseWarp
+    + vec2( 3.7 + seed * 4.1, 9.2 + seed * 2.6 );
+  vec2 uvB = terrainRotation( -0.61 - seed * 0.17 ) * uv
+    - phaseWarp * 0.73
+    + vec2( 17.3 + seed * 2.8, 5.4 - seed * 3.9 );
+
+  vec3 a = texture2D( tex, uvA, bias ).rgb;
+  vec3 b = texture2D( tex, uvB, bias ).rgb;
+  return mix( a, b, blend );
+}
+
+vec3 terrainTriplanar( sampler2D tex, vec3 position, vec3 normal, float scale ) {
   vec3 blend = pow( abs( normalize( normal ) ), vec3( 4.0 ) );
   blend /= max( blend.x + blend.y + blend.z, 0.0001 );
   float worldScale = terrainRepeat / terrainWorldWidth * scale;
-  float xLum = dot(
-    texture2D( terrainRockDetail, position.zy * worldScale + vec2( 4.7, 8.1 ) ).rgb,
-    vec3( 0.2126, 0.7152, 0.0722 )
+  vec2 worldXZ = position.xz;
+  vec3 xSample = terrainAntiTileSample(
+    tex,
+    position.zy * worldScale + vec2( 4.7, 8.1 ),
+    worldXZ,
+    4.1,
+    1.15
   );
-  float yLum = dot(
-    texture2D( terrainRockDetail, position.xz * worldScale + vec2( 12.3, 1.9 ) ).rgb,
-    vec3( 0.2126, 0.7152, 0.0722 )
+  vec3 ySample = terrainAntiTileSample(
+    tex,
+    position.xz * worldScale + vec2( 12.3, 1.9 ),
+    worldXZ,
+    5.3,
+    1.15
   );
-  float zLum = dot(
-    texture2D( terrainRockDetail, position.xy * worldScale + vec2( 2.6, 14.2 ) ).rgb,
-    vec3( 0.2126, 0.7152, 0.0722 )
+  vec3 zSample = terrainAntiTileSample(
+    tex,
+    position.xy * worldScale + vec2( 2.6, 14.2 ),
+    worldXZ,
+    6.7,
+    1.15
   );
-  float luminance = dot( vec3( xLum, yLum, zLum ), blend );
-  return mix( 1.0 - contrast, 1.0 + contrast, luminance );
-}
-
-float terrainDetailVisibility() {
-  // The photos are a near-camera detail layer only. At strategic distance the
-  // procedural macro surface fully owns the look, so no tiled photograph can
-  // alias into a visible checker/diagonal pattern.
-  float viewDistance = length( vViewPosition );
-  return 1.0 - smoothstep( 92.0, 172.0, viewDistance );
+  return xSample * blend.x + ySample * blend.y + zSample * blend.z;
 }
 
 void terrainSurfaceWeights(
@@ -231,9 +288,9 @@ void terrainSurfaceWeights(
     1.0
   );
 
-  float boundaryNoiseA = terrainFbm( worldXZ * 0.061 + vec2( 4.8, 13.1 ) ) - 0.5;
-  float boundaryNoiseB = terrainFbm( worldXZ * 0.083 + vec2( -8.2, 2.7 ) ) - 0.5;
-  float broadPatch = terrainFbm( worldXZ * 0.021 + vec2( 19.4, -6.8 ) ) - 0.5;
+  float boundaryNoiseA = terrainNoise( worldXZ * 0.082 + vec2( 4.8, 13.1 ) ) - 0.5;
+  float boundaryNoiseB = terrainNoise( worldXZ * 0.137 + vec2( -8.2, 2.7 ) ) - 0.5;
+  float broadPatch = terrainNoise( worldXZ * 0.028 + vec2( 19.4, -6.8 ) ) - 0.5;
 
   float forestFloor = clamp(
     ( regionalMoisture - 0.42 ) * 1.24
@@ -333,72 +390,69 @@ terrainSurfaceWeights(
   terrainWetShoreFactor
 );
 
+vec2 grassUv = terrainWarpedUv( 1.00, 0.18, vec2( 1.7, 8.9 ) );
+vec2 forestUv = terrainWarpedUv( 0.82, -0.31, vec2( 7.8, 16.4 ) );
+vec2 dryForestUv = terrainWarpedUv( 0.76, 0.49, vec2( 3.3, 21.8 ) );
+vec2 mossUv = terrainWarpedUv( 0.61, 0.74, vec2( 18.1, 5.3 ) );
+vec2 dirtUv = terrainWarpedUv( 0.93, -0.82, vec2( 12.7, 2.4 ) );
+vec2 mudUv = terrainWarpedUv( 0.58, 0.36, vec2( 20.3, 7.6 ) );
+vec2 rockUv = terrainWarpedUv( 0.67, 0.46, vec2( 4.1, 13.9 ) );
+vec2 sandUv = terrainWarpedUv( 0.74, -0.17, vec2( 10.6, 19.7 ) );
+vec2 snowUv = terrainWarpedUv( 0.56, 0.27, vec2( 6.3, 11.5 ) );
+
 vec2 terrainXZ = vTerrainLocalPosition.xz;
-float macroA = terrainFbm( terrainXZ * 0.010 + vec2( 3.4, 9.2 ) );
-float macroB = terrainFbm( terrainRotation( 0.47 ) * terrainXZ * 0.023 + vec2( 17.1, -5.8 ) );
-float macroC = terrainFbm( terrainRotation( -0.68 ) * terrainXZ * 0.041 + vec2( -11.7, 21.4 ) );
-float macroBlend = clamp( macroA * 0.52 + macroB * 0.31 + macroC * 0.17, 0.0, 1.0 );
-
-// Macro colors are procedural and world-scale. These remain stable at any zoom
-// and cannot create repeated photo tiles around mountains or coastlines.
-vec3 grassColor = mix(
-  vec3( 0.30, 0.22, 0.105 ),
-  vec3( 0.19, 0.285, 0.125 ),
-  terrainRegionalMoisture
+vec3 grassColor = terrainFilteredSample( terrainGrass, grassUv );
+vec3 dryForestColor = terrainFilteredSample( terrainDryForest, dryForestUv );
+vec3 forestColor = terrainFilteredSample( terrainForest, forestUv );
+vec3 mossRockColor = terrainAntiTileSample(
+  terrainMossRock,
+  mossUv,
+  terrainXZ,
+  1.9,
+  1.35
 );
-grassColor = mix( grassColor, vec3( 0.34, 0.235, 0.105 ), terrainRegionalDryness * 0.30 );
-
-vec3 forestColor = mix(
-  vec3( 0.205, 0.165, 0.090 ),
-  vec3( 0.105, 0.185, 0.095 ),
-  terrainRegionalMoisture
+vec3 dirtColor = terrainFilteredSample( terrainDirt, dirtUv );
+vec3 mudColor = terrainFilteredSample( terrainMud, mudUv );
+vec3 rockGroundColor = terrainAntiTileSample(
+  terrainRockGround,
+  rockUv,
+  terrainXZ,
+  2.7,
+  1.35
 );
-vec3 dirtColor = mix(
-  vec3( 0.245, 0.185, 0.120 ),
-  vec3( 0.335, 0.220, 0.110 ),
-  terrainRegionalDryness
+vec3 cliffColor = terrainTriplanar(
+  terrainCliffRock,
+  vTerrainLocalPosition,
+  vTerrainLocalNormal,
+  0.74
 );
-vec3 rockGroundColor = mix( vec3( 0.285, 0.275, 0.245 ), vec3( 0.235, 0.245, 0.220 ), terrainRegionalMoisture );
-vec3 mossRockColor = mix( vec3( 0.245, 0.235, 0.195 ), vec3( 0.155, 0.225, 0.145 ), terrainRegionalMoisture );
-vec3 cliffColor = mix( vec3( 0.275, 0.245, 0.210 ), vec3( 0.225, 0.235, 0.220 ), terrainRegionalMoisture );
-vec3 sandColor = mix( vec3( 0.455, 0.355, 0.205 ), vec3( 0.355, 0.285, 0.180 ), terrainWetShoreFactor );
-vec3 snowColor = vec3( 0.79, 0.815, 0.82 );
+vec3 sandColor = terrainAntiTileSample(
+  terrainCoastSand,
+  sandUv,
+  terrainXZ,
+  7.4,
+  1.35
+);
+vec3 snowColor = terrainFilteredSample( terrainSnow, snowUv );
 
-float macroLight = mix( 0.91, 1.075, macroBlend );
-grassColor *= macroLight;
-forestColor *= mix( 0.93, 1.055, macroBlend );
-dirtColor *= mix( 0.94, 1.06, macroBlend );
-rockGroundColor *= mix( 0.95, 1.045, macroBlend );
-mossRockColor *= mix( 0.94, 1.05, macroBlend );
-cliffColor *= mix( 0.945, 1.04, macroBlend );
-sandColor *= mix( 0.965, 1.035, macroBlend );
+float grassMacroVariation = terrainNoise( terrainXZ * 0.014 + vec2( 6.8, -3.1 ) );
+grassColor *= mix( 0.965, 1.035, grassMacroVariation );
 
-float detailVisibility = terrainDetailVisibility();
-if ( detailVisibility > 0.01 ) {
-  vec2 groundUv = terrainDetailUv( 1.00, 0.18, vec2( 1.7, 8.9 ) );
-  vec2 soilUv = terrainDetailUv( 0.93, -0.82, vec2( 12.7, 2.4 ) );
-  vec2 rockUv = terrainDetailUv( 0.67, 0.46, vec2( 4.1, 13.9 ) );
-  vec2 sandUv = terrainDetailUv( 0.74, -0.17, vec2( 10.6, 19.7 ) );
+float dryVariantNoise = terrainNoise( terrainXZ * 0.037 + vec2( 9.7, -4.3 ) );
+float wetVariantNoise = terrainNoise( terrainXZ * 0.043 + vec2( -12.6, 15.2 ) );
+float dryVariant = smoothstep( 0.42, 0.84, terrainRegionalDryness ) * mix( 0.28, 0.78, dryVariantNoise );
+float mudVariant = smoothstep( 0.56, 0.90, terrainRegionalMoisture ) * mix( 0.18, 0.72, wetVariantNoise );
 
-  float groundDetail = terrainDetailModulation( terrainGroundDetail, groundUv, 0.18 );
-  float soilDetail = terrainDetailModulation( terrainSoilDetail, soilUv, 0.15 );
-  float rockDetail = terrainDetailModulation( terrainRockDetail, rockUv, 0.16 );
-  float cliffDetail = terrainRockTriplanarModulation(
-    vTerrainLocalPosition,
-    vTerrainLocalNormal,
-    0.74,
-    0.17
-  );
-  float sandDetail = terrainDetailModulation( terrainSandDetail, sandUv, 0.13 );
+// Use extra physical surfaces inside each climate class instead of tinting one brown photo everywhere.
+grassColor = mix( grassColor, dryForestColor, dryVariant * 0.30 );
+forestColor = mix( forestColor, dryForestColor, dryVariant * 0.66 );
+dirtColor = mix( dirtColor, mudColor, mudVariant * ( 1.0 - terrainRegionalDryness * 0.58 ) );
 
-  grassColor *= mix( 1.0, groundDetail, detailVisibility );
-  forestColor *= mix( 1.0, groundDetail, detailVisibility * 0.82 );
-  dirtColor *= mix( 1.0, soilDetail, detailVisibility );
-  rockGroundColor *= mix( 1.0, rockDetail, detailVisibility );
-  mossRockColor *= mix( 1.0, rockDetail, detailVisibility * 0.72 );
-  cliffColor *= mix( 1.0, cliffDetail, detailVisibility );
-  sandColor *= mix( 1.0, sandDetail, detailVisibility );
-}
+// Keep climate readable without painting broad vertex-color gradients back over the photos.
+grassColor *= mix( vec3( 1.03, 0.94, 0.84 ), vec3( 0.92, 1.04, 0.90 ), terrainRegionalMoisture );
+forestColor *= mix( vec3( 0.96, 0.91, 0.84 ), vec3( 0.91, 1.02, 0.90 ), terrainRegionalMoisture );
+dirtColor *= mix( vec3( 0.92, 0.88, 0.82 ), vec3( 1.04, 0.95, 0.84 ), terrainRegionalDryness );
+sandColor *= mix( 1.0, 0.74, terrainWetShoreFactor * 0.58 );
 
 vec3 terrainAlbedo =
   grassColor * terrainPrimary.x +
@@ -410,6 +464,12 @@ vec3 terrainAlbedo =
   sandColor * terrainSecondary.z +
   snowColor * terrainSecondary.w;
 
+// Keep only broad irregular variation at strategic zoom; no second photo frequency
+// is mixed in, which avoids the large diagonal beat/checker pattern.
+float macroA = terrainNoise( terrainXZ * 0.010 + vec2( 3.4, 9.2 ) );
+float macroB = terrainNoise( terrainXZ * 0.024 + vec2( 17.1, -5.8 ) );
+float macroLight = mix( 0.95, 1.045, macroA * 0.68 + macroB * 0.32 );
+terrainAlbedo *= macroLight;
 diffuseColor.rgb *= terrainAlbedo;`,
     );
 
@@ -417,7 +477,7 @@ diffuseColor.rgb *= terrainAlbedo;`,
   };
 
   material.customProgramCacheKey = () =>
-    `world-terrain-procedural-lod-v6:${repeat}:${seaLevel}:${options.controlMapSize ?? 512}`;
+    `world-terrain-natural-blend-v6:${repeat}:${seaLevel}:${options.controlMapSize ?? 512}`;
 
   return material;
 }
@@ -429,10 +489,16 @@ function getTerrainTextures(anisotropy: number): TerrainTextureSet {
   loader.setCrossOrigin('anonymous');
 
   cachedTextures = {
-    ground: prepareTexture(loader.load(TERRAIN_TEXTURE_URLS.ground), anisotropy),
-    soil: prepareTexture(loader.load(TERRAIN_TEXTURE_URLS.soil), anisotropy),
-    rock: prepareTexture(loader.load(TERRAIN_TEXTURE_URLS.rock), anisotropy),
-    sand: prepareTexture(loader.load(TERRAIN_TEXTURE_URLS.sand), anisotropy),
+    grass: prepareTexture(loader.load(TERRAIN_TEXTURE_URLS.grass), anisotropy),
+    forest: prepareTexture(loader.load(TERRAIN_TEXTURE_URLS.forest), anisotropy),
+    dryForest: prepareTexture(loader.load(TERRAIN_TEXTURE_URLS.dryForest), anisotropy),
+    mossRock: prepareTexture(loader.load(TERRAIN_TEXTURE_URLS.mossRock), anisotropy),
+    dirt: prepareTexture(loader.load(TERRAIN_TEXTURE_URLS.dirt), anisotropy),
+    mud: prepareTexture(loader.load(TERRAIN_TEXTURE_URLS.mud), anisotropy),
+    rockGround: prepareTexture(loader.load(TERRAIN_TEXTURE_URLS.rockGround), anisotropy),
+    cliffRock: prepareTexture(loader.load(TERRAIN_TEXTURE_URLS.cliffRock), anisotropy),
+    coastSand: prepareTexture(loader.load(TERRAIN_TEXTURE_URLS.coastSand), anisotropy),
+    snow: prepareTexture(loader.load(TERRAIN_TEXTURE_URLS.snow), anisotropy),
   };
 
   return cachedTextures;
