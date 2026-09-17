@@ -166,40 +166,28 @@ vec2 terrainWarpedUv( float scale, float angle, vec2 offset ) {
     worldXZ.x / terrainWorldWidth,
     worldXZ.y / terrainWorldDepth
   );
-  vec2 broadWarp = vec2(
-    terrainNoise( worldXZ * 0.021 + vec2( 7.1, 3.7 ) + offset * 0.071 ),
-    terrainNoise( worldXZ * 0.019 + vec2( -5.4, 11.3 ) + offset * 0.053 )
-  ) - 0.5;
   vec2 fineWarp = vec2(
     terrainNoise( worldXZ * 0.083 + vec2( 13.2, -7.4 ) + offset * 0.113 ),
     terrainNoise( worldXZ * 0.071 + vec2( -9.6, 5.8 ) + offset * 0.097 )
   ) - 0.5;
-  vec2 uv = normalizedWorld * terrainRepeat * scale + broadWarp * 0.18 + fineWarp * 0.11;
+  vec2 uv = normalizedWorld * terrainRepeat * scale + fineWarp * 0.035;
   return terrainRotation( angle ) * uv + offset;
 }
 
-vec3 terrainAntiTile( sampler2D tex, vec2 uv, vec2 worldXZ, float seed ) {
-  vec2 alternateUv =
-    terrainRotation( 1.17 + seed * 0.23 ) * ( uv * 1.071 )
-    + vec2( 17.3 + seed * 6.1, -11.7 + seed * 4.9 );
-  float blendNoise = terrainNoise(
-    worldXZ * 0.041 + vec2( seed * 7.3, -seed * 5.9 )
-  );
-  float blend = mix( 0.30, 0.54, blendNoise );
-  return mix(
-    texture2D( tex, uv ).rgb,
-    texture2D( tex, alternateUv ).rgb,
-    blend
-  );
+vec3 terrainFilteredSample( sampler2D tex, vec2 uv ) {
+  // Positive mip bias suppresses the high-frequency photo pattern when hundreds
+  // of repeats are minified into the strategic camera view. The UV scale stays
+  // unchanged, so close-up physical scale remains the same.
+  return texture2D( tex, uv, 1.35 ).rgb;
 }
 
 vec3 terrainTriplanar( sampler2D tex, vec3 position, vec3 normal, float scale ) {
   vec3 blend = pow( abs( normalize( normal ) ), vec3( 4.0 ) );
   blend /= max( blend.x + blend.y + blend.z, 0.0001 );
   float worldScale = terrainRepeat / terrainWorldWidth * scale;
-  vec3 xSample = texture2D( tex, position.zy * worldScale + vec2( 4.7, 8.1 ) ).rgb;
-  vec3 ySample = texture2D( tex, position.xz * worldScale + vec2( 12.3, 1.9 ) ).rgb;
-  vec3 zSample = texture2D( tex, position.xy * worldScale + vec2( 2.6, 14.2 ) ).rgb;
+  vec3 xSample = texture2D( tex, position.zy * worldScale + vec2( 4.7, 8.1 ), 1.15 ).rgb;
+  vec3 ySample = texture2D( tex, position.xz * worldScale + vec2( 12.3, 1.9 ), 1.15 ).rgb;
+  vec3 zSample = texture2D( tex, position.xy * worldScale + vec2( 2.6, 14.2 ), 1.15 ).rgb;
   return xSample * blend.x + ySample * blend.y + zSample * blend.z;
 }
 
@@ -361,21 +349,21 @@ vec2 sandUv = terrainWarpedUv( 0.74, -0.17, vec2( 10.6, 19.7 ) );
 vec2 snowUv = terrainWarpedUv( 0.56, 0.27, vec2( 6.3, 11.5 ) );
 
 vec2 terrainXZ = vTerrainLocalPosition.xz;
-vec3 grassColor = terrainAntiTile( terrainGrass, grassUv, terrainXZ, 0.17 );
-vec3 dryForestColor = terrainAntiTile( terrainDryForest, dryForestUv, terrainXZ, 1.13 );
-vec3 forestColor = terrainAntiTile( terrainForest, forestUv, terrainXZ, 2.07 );
-vec3 mossRockColor = texture2D( terrainMossRock, mossUv ).rgb;
-vec3 dirtColor = terrainAntiTile( terrainDirt, dirtUv, terrainXZ, 3.19 );
-vec3 mudColor = terrainAntiTile( terrainMud, mudUv, terrainXZ, 4.11 );
-vec3 rockGroundColor = texture2D( terrainRockGround, rockUv ).rgb;
+vec3 grassColor = terrainFilteredSample( terrainGrass, grassUv );
+vec3 dryForestColor = terrainFilteredSample( terrainDryForest, dryForestUv );
+vec3 forestColor = terrainFilteredSample( terrainForest, forestUv );
+vec3 mossRockColor = terrainFilteredSample( terrainMossRock, mossUv );
+vec3 dirtColor = terrainFilteredSample( terrainDirt, dirtUv );
+vec3 mudColor = terrainFilteredSample( terrainMud, mudUv );
+vec3 rockGroundColor = terrainFilteredSample( terrainRockGround, rockUv );
 vec3 cliffColor = terrainTriplanar(
   terrainCliffRock,
   vTerrainLocalPosition,
   vTerrainLocalNormal,
   0.74
 );
-vec3 sandColor = texture2D( terrainCoastSand, sandUv ).rgb;
-vec3 snowColor = texture2D( terrainSnow, snowUv ).rgb;
+vec3 sandColor = terrainFilteredSample( terrainCoastSand, sandUv );
+vec3 snowColor = terrainFilteredSample( terrainSnow, snowUv );
 
 float grassMacroVariation = terrainNoise( terrainXZ * 0.014 + vec2( 6.8, -3.1 ) );
 grassColor *= mix( 0.965, 1.035, grassMacroVariation );
@@ -406,10 +394,11 @@ vec3 terrainAlbedo =
   sandColor * terrainSecondary.z +
   snowColor * terrainSecondary.w;
 
-// Two unrelated low-frequency fields break visible rectangular/blotchy control-map regions.
+// Keep only broad irregular variation at strategic zoom; no second photo frequency
+// is mixed in, which avoids the large diagonal beat/checker pattern.
 float macroA = terrainNoise( terrainXZ * 0.010 + vec2( 3.4, 9.2 ) );
 float macroB = terrainNoise( terrainXZ * 0.024 + vec2( 17.1, -5.8 ) );
-float macroLight = mix( 0.94, 1.05, macroA * 0.68 + macroB * 0.32 );
+float macroLight = mix( 0.95, 1.045, macroA * 0.68 + macroB * 0.32 );
 terrainAlbedo *= macroLight;
 diffuseColor.rgb *= terrainAlbedo;`,
     );
@@ -418,7 +407,7 @@ diffuseColor.rgb *= terrainAlbedo;`,
   };
 
   material.customProgramCacheKey = () =>
-    `world-terrain-natural-blend-v4:${repeat}:${seaLevel}:${options.controlMapSize ?? 512}`;
+    `world-terrain-natural-blend-v5:${repeat}:${seaLevel}:${options.controlMapSize ?? 512}`;
 
   return material;
 }
