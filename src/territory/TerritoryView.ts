@@ -49,7 +49,7 @@ export function createTerritoryView(
   const tintMaterial = new MeshBasicMaterial({
     vertexColors: true,
     transparent: true,
-    opacity: 0.5,
+    opacity: 0.34,
     depthWrite: false,
     polygonOffset: true,
     polygonOffsetFactor: -1,
@@ -58,7 +58,7 @@ export function createTerritoryView(
   const coreMaterial = new MeshBasicMaterial({
     vertexColors: true,
     transparent: true,
-    opacity: 0.2,
+    opacity: 0.09,
     depthWrite: false,
     polygonOffset: true,
     polygonOffsetFactor: -2,
@@ -77,10 +77,10 @@ export function createTerritoryView(
   scene.add(coreMesh);
 
   const borderMaterial = new LineMaterial({
-    linewidth: 1.35,
+    linewidth: 1.15,
     vertexColors: true,
     transparent: true,
-    opacity: 0.76,
+    opacity: 0.66,
     worldUnits: false,
   });
   borderMaterial.depthTest = false;
@@ -111,7 +111,7 @@ export function createTerritoryView(
   const expansionMaterial = new MeshBasicMaterial({
     color: 0xffefae,
     transparent: true,
-    opacity: 0.2,
+    opacity: 0.24,
     depthWrite: false,
   });
   expansionMaterial.depthTest = false;
@@ -480,10 +480,12 @@ function pushPolygonFill(
     const next = polygon[(index + 1) % polygon.length];
     if (!current || !next) continue;
 
+    // The map is viewed from +Y. Use +Y-facing winding so the
+    // transparent territory surface is not backface-culled.
     positions.push(
       center.x, y, center.z,
-      current.x, y, current.z,
       next.x, y, next.z,
+      current.x, y, current.z,
     );
 
     for (let vertex = 0; vertex < 3; vertex += 1) {
