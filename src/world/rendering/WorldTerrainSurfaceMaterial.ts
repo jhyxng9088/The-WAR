@@ -270,6 +270,38 @@ vec3 terrainTriplanar( sampler2D tex, vec3 position, vec3 normal, float scale ) 
   return xSample * blend.x + ySample * blend.y + zSample * blend.z;
 }
 
+vec3 terrainStableTriplanar(
+  sampler2D tex,
+  vec3 position,
+  vec3 normal,
+  float scale,
+  float bias
+) {
+  // Cliffs need a larger, coherent rock scale. Running the directional cliff
+  // photo through per-tile stochastic rotation creates the corrugated/zebra
+  // bands visible on steep mountain faces.
+  vec3 blend = pow( abs( normalize( normal ) ), vec3( 4.0 ) );
+  blend /= max( blend.x + blend.y + blend.z, 0.0001 );
+  float worldScale = terrainRepeat / terrainWorldWidth * scale;
+
+  vec3 xSample = texture2D(
+    tex,
+    position.zy * worldScale + vec2( 4.7, 8.1 ),
+    bias
+  ).rgb;
+  vec3 ySample = texture2D(
+    tex,
+    position.xz * worldScale + vec2( 12.3, 1.9 ),
+    bias
+  ).rgb;
+  vec3 zSample = texture2D(
+    tex,
+    position.xy * worldScale + vec2( 2.6, 14.2 ),
+    bias
+  ).rgb;
+  return xSample * blend.x + ySample * blend.y + zSample * blend.z;
+}
+
 void terrainSurfaceWeights(
   out vec4 primary,
   out vec4 secondary,
@@ -445,12 +477,23 @@ vec3 rockGroundColor = terrainStochasticTileSample(
   2.7,
   1.35
 );
-vec3 cliffColor = terrainTriplanar(
+vec3 cliffGroundColor = terrainStableTriplanar(
+  terrainRockGround,
+  vTerrainLocalPosition,
+  vTerrainLocalNormal,
+  0.20,
+  1.45
+);
+vec3 cliffStrataColor = terrainStableTriplanar(
   terrainCliffRock,
   vTerrainLocalPosition,
   vTerrainLocalNormal,
-  0.74
+  0.12,
+  1.55
 );
+// rock_06 has strong directional strata. Keep only a small amount of it so
+// cliffs retain real-photo character without turning mountains into parallel ribs.
+vec3 cliffColor = mix( cliffGroundColor, cliffStrataColor, 0.14 );
 vec3 sandColor = terrainStochasticTileSample(
   terrainCoastSand,
   sandUv,
@@ -501,7 +544,7 @@ diffuseColor.rgb *= terrainAlbedo;`,
   };
 
   material.customProgramCacheKey = () =>
-    `world-terrain-natural-blend-v6-tile-stochastic:${repeat}:${seaLevel}:${options.controlMapSize ?? 512}`;
+    `world-terrain-natural-blend-v7-cliff-scale:${repeat}:${seaLevel}:${options.controlMapSize ?? 512}`;
 
   return material;
 }
