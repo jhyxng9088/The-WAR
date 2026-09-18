@@ -35,7 +35,7 @@ const CORE_Y = 0.13;
 const BORDER_Y = 0.23;
 const SELECTION_Y = 0.27;
 const EXPANSION_Y = 0.32;
-const BORDER_SOFTEN_STRENGTH = 0.14;
+const BORDER_CORNER_CUT = 0.18;
 
 const WHITE = new Color(0xffffff);
 const MAP_INK = new Color(0x334139);
@@ -79,22 +79,40 @@ export function createTerritoryView(
   coreMesh.renderOrder = 11;
   scene.add(coreMesh);
 
-  const borderMaterial = new LineMaterial({
-    linewidth: 1.15,
+  const borderHaloMaterial = new LineMaterial({
+    linewidth: 2.5,
     vertexColors: true,
     transparent: true,
-    opacity: 0.66,
+    opacity: 0.12,
+    worldUnits: false,
+  });
+  borderHaloMaterial.depthTest = false;
+  borderHaloMaterial.depthWrite = false;
+
+  const borderMaterial = new LineMaterial({
+    linewidth: 1.05,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.72,
     worldUnits: false,
   });
   borderMaterial.depthTest = false;
   borderMaterial.depthWrite = false;
 
   let borderGeometry = new LineSegmentsGeometry();
+  let borderHaloLines = new LineSegments2(
+    borderGeometry,
+    borderHaloMaterial,
+  );
+  borderHaloLines.name = "territory-border-halo";
+  borderHaloLines.frustumCulled = false;
+  borderHaloLines.renderOrder = 29;
+
   let borderLines = new LineSegments2(borderGeometry, borderMaterial);
   borderLines.name = "territory-borders";
   borderLines.frustumCulled = false;
   borderLines.renderOrder = 30;
-  scene.add(borderLines);
+  scene.add(borderHaloLines, borderLines);
 
   const selectionMaterial = new MeshBasicMaterial({
     vertexColors: true,
@@ -169,7 +187,7 @@ export function createTerritoryView(
     for (const nation of state.nations) {
       const rawLoops = collectNationBoundaryLoops(state, nation.id);
       const softenedLoops = rawLoops.map((loop) =>
-        softenClosedLoop(loop, BORDER_SOFTEN_STRENGTH),
+        createDisplayLoop(loop),
       );
       nationLoops.set(nation.id, softenedLoops);
 
@@ -233,7 +251,7 @@ export function createTerritoryView(
       nextBorderGeometry.setColors(borderColors);
     }
 
-    scene.remove(tintMesh, coreMesh, borderLines);
+    scene.remove(tintMesh, coreMesh, borderHaloLines, borderLines);
     tintGeometry.dispose();
     coreGeometry.dispose();
     borderGeometry.dispose();
@@ -249,6 +267,15 @@ export function createTerritoryView(
     coreMesh.renderOrder = 11;
 
     borderGeometry = nextBorderGeometry;
+
+    borderHaloLines = new LineSegments2(
+      borderGeometry,
+      borderHaloMaterial,
+    );
+    borderHaloLines.name = "territory-border-halo";
+    borderHaloLines.frustumCulled = false;
+    borderHaloLines.renderOrder = 29;
+
     borderLines = new LineSegments2(
       borderGeometry,
       borderMaterial,
@@ -257,7 +284,12 @@ export function createTerritoryView(
     borderLines.frustumCulled = false;
     borderLines.renderOrder = 30;
 
-    scene.add(tintMesh, coreMesh, borderLines);
+    scene.add(
+      tintMesh,
+      coreMesh,
+      borderHaloLines,
+      borderLines,
+    );
   };
 
   const rebuildSelection = (cell: TerritoryCell | null): void => {
@@ -386,6 +418,10 @@ export function createTerritoryView(
 
   return {
     resize(width: number, height: number): void {
+      borderHaloMaterial.resolution.set(
+        Math.max(1, width),
+        Math.max(1, height),
+      );
       borderMaterial.resolution.set(
         Math.max(1, width),
         Math.max(1, height),
@@ -396,6 +432,7 @@ export function createTerritoryView(
       scene.remove(
         tintMesh,
         coreMesh,
+        borderHaloLines,
         borderLines,
         selectionMesh,
         expansionMesh,
@@ -410,6 +447,7 @@ export function createTerritoryView(
 
       tintMaterial.dispose();
       coreMaterial.dispose();
+      borderHaloMaterial.dispose();
       borderMaterial.dispose();
       selectionMaterial.dispose();
       expansionMaterial.dispose();
@@ -579,27 +617,94 @@ function collectNationBoundaryLoops(
   return loops;
 }
 
-function softenClosedLoop(
+function createDisplayLoop(
   points: readonly Point2[],
-  strength: number,
 ): Point2[] {
-  if (points.length < 5) return [...points];
+  const cleaned = removeNearDuplicates(points);
+  if (cleaned.length < 5) return [...cleaned];
 
-  return points.map((point, index) => {
-    const previous =
-      points[(index - 1 + points.length) % points.length];
+  const rounded = cornerCutClosedLoop(
+    cleaned,
+    BORDER_CORNER_CUT,
+  );
+
+  return preserveLoopArea(cleaned, rounded);
+}
+
+function cornerCutClosedLoop(
+  points: readonly Point2[],
+  cut: number,
+): Point2[] {
+  const result: Point2[] = [];
+
+  for (let index = 0; index < points.length; index += 1) {
+    const current = points[index];
     const next = points[(index + 1) % points.length];
+    if (!current || !next) continue;
 
-    if (!previous || !next) return point;
+    result.push(
+      {
+        x: current.x + (next.x - current.x) * cut,
+        z: current.z + (next.z - current.z) * cut,
+      },
+      {
+        x: current.x + (next.x - current.x) * (1 - cut),
+        z: current.z + (next.z - current.z) * (1 - cut),
+      },
+    );
+  }
 
-    const averageX = (previous.x + point.x + next.x) / 3;
-    const averageZ = (previous.z + point.z + next.z) / 3;
+  return result;
+}
 
-    return {
-      x: point.x + (averageX - point.x) * strength,
-      z: point.z + (averageZ - point.z) * strength,
-    };
-  });
+function preserveLoopArea(
+  source: readonly Point2[],
+  rounded: readonly Point2[],
+): Point2[] {
+  const sourceArea = Math.abs(signedArea(source));
+  const roundedArea = Math.abs(signedArea(rounded));
+
+  if (sourceArea < 0.001 || roundedArea < 0.001) {
+    return [...rounded];
+  }
+
+  const center = polygonCenter(rounded);
+  const rawScale = Math.sqrt(sourceArea / roundedArea);
+  const scale = Math.max(0.96, Math.min(1.04, rawScale));
+
+  return rounded.map((point) => ({
+    x: center.x + (point.x - center.x) * scale,
+    z: center.z + (point.z - center.z) * scale,
+  }));
+}
+
+function polygonCenter(points: readonly Point2[]): Point2 {
+  let x = 0;
+  let z = 0;
+
+  for (const point of points) {
+    x += point.x;
+    z += point.z;
+  }
+
+  return {
+    x: x / points.length,
+    z: z / points.length,
+  };
+}
+
+function signedArea(points: readonly Point2[]): number {
+  let area = 0;
+
+  for (let index = 0; index < points.length; index += 1) {
+    const current = points[index];
+    const next = points[(index + 1) % points.length];
+    if (!current || !next) continue;
+
+    area += current.x * next.z - next.x * current.z;
+  }
+
+  return area * 0.5;
 }
 
 function pushTriangulatedLoopFill(

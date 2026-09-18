@@ -41,6 +41,9 @@ export class TerritoryHud {
     const owned = state.ownedCount(state.playerNation);
     const frontier = state.frontierCells().length;
     const region = selected ? state.regionForCell(selected) : null;
+    const regionControl = region
+      ? state.regionControl(region.id)
+      : null;
 
     const signature = [
       state.version,
@@ -76,8 +79,8 @@ export class TerritoryHud {
       return;
     }
 
-    const regionSuffix = region
-      ? " · Region " + region.label
+    const regionSuffix = region && regionControl
+      ? formatRegionSuffix(state, regionControl)
       : "";
 
     if (selected.owner === state.playerNation) {
@@ -105,4 +108,30 @@ export class TerritoryHud {
   public dispose(): void {
     this.element.remove();
   }
+}
+
+
+function formatRegionSuffix(
+  state: TerritoryState,
+  control: ReturnType<TerritoryState["regionControl"]>,
+): string {
+  const percent = Math.round(control.leadingShare * 100);
+
+  if (!control.leadingNation) {
+    return " · Region " + control.region.label + " · neutral";
+  }
+
+  const leader = state.nation(control.leadingNation).name;
+  const contested = control.contested ? " · contested" : "";
+
+  return (
+    " · Region " +
+    control.region.label +
+    " · " +
+    leader +
+    " " +
+    percent +
+    "%" +
+    contested
+  );
 }
