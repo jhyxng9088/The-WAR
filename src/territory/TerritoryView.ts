@@ -1,93 +1,135 @@
 import {
-  CanvasTexture,
+  BufferGeometry,
   Color,
   CylinderGeometry,
-  LinearFilter,
+  Float32BufferAttribute,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
-  PlaneGeometry,
-  RingGeometry,
   Scene,
-  SRGBColorSpace,
 } from "three";
+import { LineMaterial } from "three/addons/lines/LineMaterial.js";
+import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
+import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
 import {
-  TERRITORY_GRID_DEPTH,
-  TERRITORY_GRID_WIDTH,
   TerritoryState,
+  type TerritoryCell,
 } from "./TerritoryState";
+import { NATIONS, type NationId } from "./NationCatalog";
 
 export interface TerritoryView {
+  resize(width: number, height: number): void;
   sync(state: TerritoryState): void;
   dispose(): void;
 }
 
-const TEXTURE_WIDTH = 640;
-const TEXTURE_HEIGHT = 448;
+interface Point2 {
+  readonly x: number;
+  readonly z: number;
+}
+
+const TINT_Y = 0.1;
+const BORDER_Y = 0.22;
+const SELECTION_Y = 0.31;
+const EXPANSION_Y = 0.34;
+const WHITE = new Color(0xffffff);
+const SHARED_BORDER = new Color(0xf0eadc);
+const nationOrder = new Map<NationId, number>(
+  NATIONS.map((nation, index) => [nation.id, index]),
+);
 
 export function createTerritoryView(
   scene: Scene,
   state: TerritoryState,
 ): TerritoryView {
-  const canvas = document.createElement("canvas");
-  canvas.width = TEXTURE_WIDTH;
-  canvas.height = TEXTURE_HEIGHT;
-
-  const context = canvas.getContext("2d", {
-    alpha: true,
-    willReadFrequently: false,
-  });
-
-  if (!context) {
-    throw new Error("2D canvas unavailable for territory rendering.");
-  }
-
-  const texture = new CanvasTexture(canvas);
-  texture.colorSpace = SRGBColorSpace;
-  texture.minFilter = LinearFilter;
-  texture.magFilter = LinearFilter;
-  texture.generateMipmaps = false;
-
-  const surfaceGeometry = new PlaneGeometry(
-    TERRITORY_GRID_WIDTH,
-    TERRITORY_GRID_DEPTH,
-  );
-  const surfaceMaterial = new MeshBasicMaterial({
-    map: texture,
+  const tintMaterial = new MeshBasicMaterial({
+    vertexColors: true,
     transparent: true,
+    opacity: 0.3,
     depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
   });
-  const surface = new Mesh(surfaceGeometry, surfaceMaterial);
-  surface.rotation.x = -Math.PI / 2;
-  surface.position.y = 0.12;
-  surface.name = "organic-territory-surface";
-  scene.add(surface);
 
-  const selectionGeometry = new RingGeometry(18, 27, 40);
-  const selectionMaterial = new MeshBasicMaterial({
+  let tintGeometry = new BufferGeometry();
+  let tintMesh = new Mesh(tintGeometry, tintMaterial);
+  tintMesh.name = "territory-vector-fill";
+  tintMesh.renderOrder = 10;
+  scene.add(tintMesh);
+
+  const borderMaterial = new LineMaterial({
+    linewidth: 2.2,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.98,
+    worldUnits: false,
+  });
+  borderMaterial.depthTest = false;
+  borderMaterial.depthWrite = false;
+
+  let borderGeometry = new LineSegmentsGeometry();
+  let borderLines = new LineSegments2(borderGeometry, borderMaterial);
+  borderLines.name = "territory-vector-borders";
+  borderLines.frustumCulled = false;
+  borderLines.renderOrder = 30;
+  scene.add(borderLines);
+
+  const selectionFillMaterial = new MeshBasicMaterial({
     color: 0xffffff,
     transparent: true,
-    opacity: 0.92,
+    opacity: 0.16,
     depthWrite: false,
   });
-  const selection = new Mesh(selectionGeometry, selectionMaterial);
-  selection.rotation.x = -Math.PI / 2;
-  selection.position.y = 0.28;
-  selection.visible = false;
-  scene.add(selection);
+  selectionFillMaterial.depthTest = false;
 
-  const expansionGeometry = new RingGeometry(23, 31, 48);
-  const expansionMaterial = new MeshBasicMaterial({
-    color: 0xf6f8ff,
+  let selectionFillGeometry = new BufferGeometry();
+  let selectionFill = new Mesh(
+    selectionFillGeometry,
+    selectionFillMaterial,
+  );
+  selectionFill.name = "territory-selection-fill";
+  selectionFill.renderOrder = 40;
+  selectionFill.visible = false;
+  scene.add(selectionFill);
+
+  const selectionBorderMaterial = new LineMaterial({
+    color: 0xffffff,
+    linewidth: 3.2,
     transparent: true,
-    opacity: 0.92,
+    opacity: 0.98,
+    worldUnits: false,
+  });
+  selectionBorderMaterial.depthTest = false;
+  selectionBorderMaterial.depthWrite = false;
+
+  let selectionBorderGeometry = new LineSegmentsGeometry();
+  let selectionBorder = new LineSegments2(
+    selectionBorderGeometry,
+    selectionBorderMaterial,
+  );
+  selectionBorder.name = "territory-selection-border";
+  selectionBorder.frustumCulled = false;
+  selectionBorder.renderOrder = 41;
+  selectionBorder.visible = false;
+  scene.add(selectionBorder);
+
+  const expansionFillMaterial = new MeshBasicMaterial({
+    color: 0xffefae,
+    transparent: true,
+    opacity: 0.2,
     depthWrite: false,
   });
-  const expansionRing = new Mesh(expansionGeometry, expansionMaterial);
-  expansionRing.rotation.x = -Math.PI / 2;
-  expansionRing.position.y = 0.32;
-  expansionRing.visible = false;
-  scene.add(expansionRing);
+  expansionFillMaterial.depthTest = false;
+
+  let expansionFillGeometry = new BufferGeometry();
+  let expansionFill = new Mesh(
+    expansionFillGeometry,
+    expansionFillMaterial,
+  );
+  expansionFill.name = "territory-expansion-fill";
+  expansionFill.renderOrder = 42;
+  expansionFill.visible = false;
+  scene.add(expansionFill);
 
   const capitalGeometry = new CylinderGeometry(7, 10, 22, 6);
   const capitalMaterials: MeshStandardMaterial[] = [];
@@ -115,165 +157,387 @@ export function createTerritoryView(
   }
 
   let lastVersion = -1;
+  let lastSelectedId: number | null = null;
+  let lastExpansionId: number | null = null;
 
-  const rebuildSurface = (): void => {
-    const ownerMap = new Uint8Array(TEXTURE_WIDTH * TEXTURE_HEIGHT);
-    const nationIndex = new Map(
-      state.nations.map((nation, index) => [nation.id, index + 1]),
-    );
+  const rebuildOwnership = (): void => {
+    const tintPositions: number[] = [];
+    const tintColors: number[] = [];
+    const borderPositions: number[] = [];
+    const borderColors: number[] = [];
 
-    for (let py = 0; py < TEXTURE_HEIGHT; py += 1) {
-      const z =
-        -TERRITORY_GRID_DEPTH / 2 +
-        ((py + 0.5) / TEXTURE_HEIGHT) * TERRITORY_GRID_DEPTH;
+    for (const cell of state.cells) {
+      if (!cell.owner) continue;
 
-      for (let px = 0; px < TEXTURE_WIDTH; px += 1) {
-        const x =
-          -TERRITORY_GRID_WIDTH / 2 +
-          ((px + 0.5) / TEXTURE_WIDTH) * TERRITORY_GRID_WIDTH;
-        const cell = state.cellFromWorld(x, z);
+      const polygon = state.cellPolygon(cell);
+      const color = new Color(state.nation(cell.owner).color);
 
-        if (cell?.owner) {
-          ownerMap[py * TEXTURE_WIDTH + px] =
-            nationIndex.get(cell.owner) ?? 0;
+      pushPolygonFill(
+        tintPositions,
+        tintColors,
+        polygon,
+        TINT_Y,
+        color,
+      );
+
+      const neighbors = [
+        {
+          neighbor: state.cellAt(cell.col, cell.row - 1),
+          points: polygon.slice(0, 3),
+        },
+        {
+          neighbor: state.cellAt(cell.col + 1, cell.row),
+          points: polygon.slice(2, 5),
+        },
+        {
+          neighbor: state.cellAt(cell.col, cell.row + 1),
+          points: polygon.slice(4, 7),
+        },
+        {
+          neighbor: state.cellAt(cell.col - 1, cell.row),
+          points: [polygon[6], polygon[7], polygon[0]],
+        },
+      ] as const;
+
+      for (const edge of neighbors) {
+        if (edge.neighbor?.owner === cell.owner) continue;
+
+        if (
+          edge.neighbor?.owner &&
+          nationIndex(cell.owner) >
+            nationIndex(edge.neighbor.owner)
+        ) {
+          continue;
         }
+
+        const borderColor = edge.neighbor?.owner
+          ? SHARED_BORDER
+          : color.clone().lerp(WHITE, 0.52);
+
+        pushPolylineSegments(
+          borderPositions,
+          borderColors,
+          edge.points.filter(
+            (point): point is Point2 => point !== undefined,
+          ),
+          BORDER_Y,
+          borderColor,
+        );
       }
     }
 
-    const image = context.createImageData(
-      TEXTURE_WIDTH,
-      TEXTURE_HEIGHT,
+    const nextTintGeometry = new BufferGeometry();
+    nextTintGeometry.setAttribute(
+      "position",
+      new Float32BufferAttribute(tintPositions, 3),
     );
-    const data = image.data;
+    nextTintGeometry.setAttribute(
+      "color",
+      new Float32BufferAttribute(tintColors, 3),
+    );
 
-    for (let py = 0; py < TEXTURE_HEIGHT; py += 1) {
-      for (let px = 0; px < TEXTURE_WIDTH; px += 1) {
-        const index = py * TEXTURE_WIDTH + px;
-        const owner = ownerMap[index] ?? 0;
-
-        if (owner === 0) continue;
-
-        const nation = state.nations[owner - 1];
-        if (!nation) continue;
-
-        const color = new Color(nation.color);
-        const left =
-          px > 0 ? ownerMap[index - 1] : 0;
-        const right =
-          px < TEXTURE_WIDTH - 1 ? ownerMap[index + 1] : 0;
-        const up =
-          py > 0 ? ownerMap[index - TEXTURE_WIDTH] : 0;
-        const down =
-          py < TEXTURE_HEIGHT - 1
-            ? ownerMap[index + TEXTURE_WIDTH]
-            : 0;
-
-        const isBorder =
-          left !== owner ||
-          right !== owner ||
-          up !== owner ||
-          down !== owner;
-
-        let red = Math.round(color.r * 255);
-        let green = Math.round(color.g * 255);
-        let blue = Math.round(color.b * 255);
-        let alpha = 92;
-
-        if (isBorder) {
-          const touchesNation =
-            (left !== 0 && left !== owner) ||
-            (right !== 0 && right !== owner) ||
-            (up !== 0 && up !== owner) ||
-            (down !== 0 && down !== owner);
-
-          if (touchesNation) {
-            red = 238;
-            green = 235;
-            blue = 220;
-          } else {
-            red = Math.round(red + (255 - red) * 0.52);
-            green = Math.round(green + (255 - green) * 0.52);
-            blue = Math.round(blue + (255 - blue) * 0.52);
-          }
-
-          alpha = 220;
-        }
-
-        const dataIndex = index * 4;
-        data[dataIndex] = red;
-        data[dataIndex + 1] = green;
-        data[dataIndex + 2] = blue;
-        data[dataIndex + 3] = alpha;
-      }
+    const nextBorderGeometry = new LineSegmentsGeometry();
+    if (borderPositions.length > 0) {
+      nextBorderGeometry.setPositions(borderPositions);
+      nextBorderGeometry.setColors(borderColors);
     }
 
-    context.clearRect(0, 0, TEXTURE_WIDTH, TEXTURE_HEIGHT);
-    context.putImageData(image, 0, 0);
-    texture.needsUpdate = true;
+    scene.remove(tintMesh, borderLines);
+    tintGeometry.dispose();
+    borderGeometry.dispose();
+
+    tintGeometry = nextTintGeometry;
+    tintMesh = new Mesh(tintGeometry, tintMaterial);
+    tintMesh.name = "territory-vector-fill";
+    tintMesh.renderOrder = 10;
+
+    borderGeometry = nextBorderGeometry;
+    borderLines = new LineSegments2(borderGeometry, borderMaterial);
+    borderLines.name = "territory-vector-borders";
+    borderLines.frustumCulled = false;
+    borderLines.renderOrder = 30;
+
+    scene.add(tintMesh, borderLines);
+  };
+
+  const rebuildSelection = (cell: TerritoryCell | null): void => {
+    scene.remove(selectionFill, selectionBorder);
+    selectionFillGeometry.dispose();
+    selectionBorderGeometry.dispose();
+
+    selectionFillGeometry = new BufferGeometry();
+    selectionBorderGeometry = new LineSegmentsGeometry();
+
+    if (!cell) {
+      selectionFill = new Mesh(
+        selectionFillGeometry,
+        selectionFillMaterial,
+      );
+      selectionBorder = new LineSegments2(
+        selectionBorderGeometry,
+        selectionBorderMaterial,
+      );
+      selectionFill.visible = false;
+      selectionBorder.visible = false;
+      scene.add(selectionFill, selectionBorder);
+      return;
+    }
+
+    const polygon = state.cellPolygon(cell);
+    const positions: number[] = [];
+    const colors: number[] = [];
+    const baseColor = selectionColor(state, cell);
+
+    pushPolygonFill(
+      positions,
+      colors,
+      polygon,
+      SELECTION_Y,
+      baseColor,
+    );
+    selectionFillGeometry.setAttribute(
+      "position",
+      new Float32BufferAttribute(positions, 3),
+    );
+
+    const selectionSegments: number[] = [];
+    const selectionColors: number[] = [];
+    pushClosedPolylineSegments(
+      selectionSegments,
+      selectionColors,
+      polygon,
+      SELECTION_Y + 0.01,
+      baseColor.clone().lerp(WHITE, 0.35),
+    );
+    selectionBorderGeometry.setPositions(selectionSegments);
+    selectionBorderGeometry.setColors(selectionColors);
+
+    selectionFillMaterial.color.copy(baseColor);
+    selectionBorderMaterial.color.copy(
+      baseColor.clone().lerp(WHITE, 0.35),
+    );
+
+    selectionFill = new Mesh(
+      selectionFillGeometry,
+      selectionFillMaterial,
+    );
+    selectionFill.name = "territory-selection-fill";
+    selectionFill.renderOrder = 40;
+
+    selectionBorder = new LineSegments2(
+      selectionBorderGeometry,
+      selectionBorderMaterial,
+    );
+    selectionBorder.name = "territory-selection-border";
+    selectionBorder.frustumCulled = false;
+    selectionBorder.renderOrder = 41;
+
+    scene.add(selectionFill, selectionBorder);
+  };
+
+  const rebuildExpansion = (cell: TerritoryCell | null): void => {
+    scene.remove(expansionFill);
+    expansionFillGeometry.dispose();
+    expansionFillGeometry = new BufferGeometry();
+
+    if (!cell) {
+      expansionFill = new Mesh(
+        expansionFillGeometry,
+        expansionFillMaterial,
+      );
+      expansionFill.visible = false;
+      scene.add(expansionFill);
+      return;
+    }
+
+    const polygon = state.cellPolygon(cell);
+    const positions: number[] = [];
+    const colors: number[] = [];
+    const color = new Color(0xffefae);
+
+    pushPolygonFill(
+      positions,
+      colors,
+      polygon,
+      EXPANSION_Y,
+      color,
+    );
+    expansionFillGeometry.setAttribute(
+      "position",
+      new Float32BufferAttribute(positions, 3),
+    );
+
+    expansionFill = new Mesh(
+      expansionFillGeometry,
+      expansionFillMaterial,
+    );
+    expansionFill.name = "territory-expansion-fill";
+    expansionFill.renderOrder = 42;
+    scene.add(expansionFill);
   };
 
   const sync = (current: TerritoryState): void => {
     if (lastVersion !== current.version) {
       lastVersion = current.version;
-      rebuildSurface();
+      rebuildOwnership();
     }
 
-    const selected = current.selectedCell();
-
-    if (selected) {
-      const center = current.cellCenter(selected);
-      selection.position.set(center.x, 0.28, center.z);
-      selection.visible = true;
-
-      if (selected.owner) {
-        selectionMaterial.color.set(
-          current.nation(selected.owner).color,
-        );
-      } else {
-        selectionMaterial.color.set(
-          current.isPlayerFrontier(selected)
-            ? 0xf7e7a8
-            : 0xd7d7d0,
-        );
-      }
-    } else {
-      selection.visible = false;
+    if (lastSelectedId !== current.selectedCellId) {
+      lastSelectedId = current.selectedCellId;
+      rebuildSelection(current.selectedCell());
     }
 
-    const expansionCell = current.expansionCell();
+    const expansionId = current.expansion?.targetId ?? null;
+    if (lastExpansionId !== expansionId) {
+      lastExpansionId = expansionId;
+      rebuildExpansion(current.expansionCell());
+    }
 
-    if (expansionCell) {
-      const center = current.cellCenter(expansionCell);
+    if (current.expansion) {
       const progress = current.expansionProgress();
-
-      expansionRing.position.set(center.x, 0.32, center.z);
-      expansionRing.scale.setScalar(0.72 + progress * 0.42);
-      expansionRing.rotation.z = progress * Math.PI * 1.5;
-      expansionMaterial.opacity = 0.42 + progress * 0.5;
-      expansionRing.visible = true;
+      expansionFillMaterial.opacity =
+        0.12 + Math.sin(progress * Math.PI) * 0.28;
+      expansionFill.visible = true;
     } else {
-      expansionRing.visible = false;
+      expansionFill.visible = false;
     }
   };
 
   sync(state);
 
   return {
+    resize(width: number, height: number): void {
+      borderMaterial.resolution.set(
+        Math.max(1, width),
+        Math.max(1, height),
+      );
+      selectionBorderMaterial.resolution.set(
+        Math.max(1, width),
+        Math.max(1, height),
+      );
+    },
     sync,
     dispose(): void {
-      scene.remove(surface, selection, expansionRing, ...capitals);
+      scene.remove(
+        tintMesh,
+        borderLines,
+        selectionFill,
+        selectionBorder,
+        expansionFill,
+        ...capitals,
+      );
 
-      surfaceGeometry.dispose();
-      surfaceMaterial.dispose();
-      texture.dispose();
+      tintGeometry.dispose();
+      borderGeometry.dispose();
+      selectionFillGeometry.dispose();
+      selectionBorderGeometry.dispose();
+      expansionFillGeometry.dispose();
 
-      selectionGeometry.dispose();
-      selectionMaterial.dispose();
-      expansionGeometry.dispose();
-      expansionMaterial.dispose();
+      tintMaterial.dispose();
+      borderMaterial.dispose();
+      selectionFillMaterial.dispose();
+      selectionBorderMaterial.dispose();
+      expansionFillMaterial.dispose();
 
       capitalGeometry.dispose();
       for (const material of capitalMaterials) material.dispose();
     },
   };
+}
+
+function pushPolygonFill(
+  positions: number[],
+  colors: number[],
+  polygon: readonly Point2[],
+  y: number,
+  color: Color,
+): void {
+  if (polygon.length < 3) return;
+
+  const center = polygon.reduce(
+    (sum, point) => ({
+      x: sum.x + point.x / polygon.length,
+      z: sum.z + point.z / polygon.length,
+    }),
+    { x: 0, z: 0 },
+  );
+
+  for (let index = 0; index < polygon.length; index += 1) {
+    const current = polygon[index];
+    const next = polygon[(index + 1) % polygon.length];
+    if (!current || !next) continue;
+
+    positions.push(
+      center.x, y, center.z,
+      current.x, y, current.z,
+      next.x, y, next.z,
+    );
+
+    for (let vertex = 0; vertex < 3; vertex += 1) {
+      colors.push(color.r, color.g, color.b);
+    }
+  }
+}
+
+function pushPolylineSegments(
+  positions: number[],
+  colors: number[],
+  points: readonly Point2[],
+  y: number,
+  color: Color,
+): void {
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const a = points[index];
+    const b = points[index + 1];
+    if (!a || !b) continue;
+
+    positions.push(
+      a.x, y, a.z,
+      b.x, y, b.z,
+    );
+    colors.push(
+      color.r, color.g, color.b,
+      color.r, color.g, color.b,
+    );
+  }
+}
+
+function pushClosedPolylineSegments(
+  positions: number[],
+  colors: number[],
+  polygon: readonly Point2[],
+  y: number,
+  color: Color,
+): void {
+  for (let index = 0; index < polygon.length; index += 1) {
+    const a = polygon[index];
+    const b = polygon[(index + 1) % polygon.length];
+    if (!a || !b) continue;
+
+    positions.push(
+      a.x, y, a.z,
+      b.x, y, b.z,
+    );
+    colors.push(
+      color.r, color.g, color.b,
+      color.r, color.g, color.b,
+    );
+  }
+}
+
+function selectionColor(
+  state: TerritoryState,
+  cell: TerritoryCell,
+): Color {
+  if (cell.owner) {
+    return new Color(state.nation(cell.owner).color);
+  }
+
+  return new Color(
+    state.isPlayerFrontier(cell) ? 0xf0d98a : 0xd5d6cc,
+  );
+}
+
+function nationIndex(id: NationId): number {
+  return nationOrder.get(id) ?? Number.MAX_SAFE_INTEGER;
 }

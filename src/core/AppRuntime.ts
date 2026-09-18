@@ -54,7 +54,7 @@ export class AppRuntime {
       "STAGE 2 · TERRITORY",
     );
     this.diagnostics.setContext(
-      "Stage 2-C · organic borders · nations expand over time",
+      "Stage 2-D · vector borders · shape-matched selection",
     );
 
     this.viewport = new ViewportController(
@@ -66,6 +66,7 @@ export class AppRuntime {
           snapshot.pixelRatio,
         );
         this.camera.resize(snapshot.width, snapshot.height);
+        this.territoryView.resize(snapshot.width, snapshot.height);
         this.diagnostics.setViewport(snapshot);
       },
     );

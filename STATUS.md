@@ -10,39 +10,37 @@ Updated: 2026-09-19
 
 Detailed terrain remains paused. The active world is a large flat green gameplay sandbox while territory, economy, war, and AI are built.
 
-## Stage 2-C active slice
+## Stage 2-D active slice
 
 Implemented in this pass:
-- logical territory cells remain the simulation source of truth
-- visual cell centers are jittered into an irregular Voronoi-like layout
-- hit testing uses the same irregular cell centers, so taps match the visible territory
-- territory colors and borders are rendered into one smooth canvas texture
-- square cell fills / frontier-dot grid visuals are removed
-- neutral borders use lightened nation colors
-- nation-to-nation borders use a shared pale border
-- 5 nations remain visible with separate capitals
-- non-player nations now expand into neutral frontier land over time
-- AI expansion is deterministic and intentionally simple
-- player still manually chooses each expansion target
-- enemy territory remains protected from peaceful claiming
-- HUD now states that rival nations are expanding
+- removed the stretched 640×448 territory canvas texture
+- territory fill is now direct vector geometry
+- national borders are direct antialiased vector lines
+- border line width is screen-space stable across zoom
+- border lines disable depth testing and frustum culling to prevent pan/tilt flicker
+- logical cells use shared irregular corners and bent shared edges
+- the same canonical polygon is used for rendering and tap hit testing
+- selected land is highlighted by its actual irregular polygon shape
+- the old centered circular selection marker is removed
+- expansion feedback fills the actual target polygon instead of using a ring
+- rival neutral-land expansion from Stage 2-C remains active
 
 ## Stage 2 next work
 
 After device review:
-- tune organic border resolution / thickness if needed
-- decide final expansion command style
-- add expansion pressure/cost so rapid land grabbing has a tradeoff
-- introduce region-level grouping above internal cells
-- finish the Stage 2 territory model before moving to Stage 3 resources
+- tune border thickness and territory opacity
+- decide the final player expansion command style
+- introduce region grouping above internal cells
+- add expansion cost / pressure before Stage 3 resources
+- close Stage 2 only when claiming land feels clear and satisfying
 
 ## Review gate
 
 Confirm on device:
-- territory no longer reads like a visible square grid
-- tapping matches the visible irregular territory shapes
-- rival nations visibly grow over time
-- player expansion still feels responsive
-- borders remain readable as nations approach one another
-- HUD stays readable on phone
-- mobile performance remains acceptable
+- borders stay crisp when zooming
+- borders do not disappear/flicker while panning, rotating, or tilting
+- selection follows the visible irregular territory shape
+- no obvious internal square grid appears
+- rival nations continue expanding
+- player expansion and taps still align with the displayed territory
+- phone performance remains acceptable
