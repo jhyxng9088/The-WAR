@@ -29,11 +29,15 @@ interface Point2 {
 }
 
 const TINT_Y = 0.1;
-const BORDER_Y = 0.22;
-const SELECTION_Y = 0.31;
-const EXPANSION_Y = 0.34;
+const CORE_Y = 0.13;
+const BORDER_Y = 0.23;
+const SELECTION_Y = 0.27;
+const EXPANSION_Y = 0.32;
+
 const WHITE = new Color(0xffffff);
-const SHARED_BORDER = new Color(0xf0eadc);
+const MAP_INK = new Color(0x334139);
+const SHARED_BORDER = new Color(0x455149);
+
 const nationOrder = new Map<NationId, number>(
   NATIONS.map((nation, index) => [nation.id, index]),
 );
@@ -45,23 +49,38 @@ export function createTerritoryView(
   const tintMaterial = new MeshBasicMaterial({
     vertexColors: true,
     transparent: true,
-    opacity: 0.3,
+    opacity: 0.5,
     depthWrite: false,
     polygonOffset: true,
     polygonOffsetFactor: -1,
   });
 
+  const coreMaterial = new MeshBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.2,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+  });
+
   let tintGeometry = new BufferGeometry();
   let tintMesh = new Mesh(tintGeometry, tintMaterial);
-  tintMesh.name = "territory-vector-fill";
+  tintMesh.name = "territory-fill";
   tintMesh.renderOrder = 10;
   scene.add(tintMesh);
 
+  let coreGeometry = new BufferGeometry();
+  let coreMesh = new Mesh(coreGeometry, coreMaterial);
+  coreMesh.name = "territory-core-fill";
+  coreMesh.renderOrder = 11;
+  scene.add(coreMesh);
+
   const borderMaterial = new LineMaterial({
-    linewidth: 2.2,
+    linewidth: 1.35,
     vertexColors: true,
     transparent: true,
-    opacity: 0.98,
+    opacity: 0.76,
     worldUnits: false,
   });
   borderMaterial.depthTest = false;
@@ -69,67 +88,40 @@ export function createTerritoryView(
 
   let borderGeometry = new LineSegmentsGeometry();
   let borderLines = new LineSegments2(borderGeometry, borderMaterial);
-  borderLines.name = "territory-vector-borders";
+  borderLines.name = "territory-borders";
   borderLines.frustumCulled = false;
   borderLines.renderOrder = 30;
   scene.add(borderLines);
 
-  const selectionFillMaterial = new MeshBasicMaterial({
-    color: 0xffffff,
+  const selectionMaterial = new MeshBasicMaterial({
+    vertexColors: true,
     transparent: true,
-    opacity: 0.16,
+    opacity: 0.12,
     depthWrite: false,
   });
-  selectionFillMaterial.depthTest = false;
+  selectionMaterial.depthTest = false;
 
-  let selectionFillGeometry = new BufferGeometry();
-  let selectionFill = new Mesh(
-    selectionFillGeometry,
-    selectionFillMaterial,
-  );
-  selectionFill.name = "territory-selection-fill";
-  selectionFill.renderOrder = 40;
-  selectionFill.visible = false;
-  scene.add(selectionFill);
+  let selectionGeometry = new BufferGeometry();
+  let selectionMesh = new Mesh(selectionGeometry, selectionMaterial);
+  selectionMesh.name = "territory-nation-selection";
+  selectionMesh.renderOrder = 40;
+  selectionMesh.visible = false;
+  scene.add(selectionMesh);
 
-  const selectionBorderMaterial = new LineMaterial({
-    color: 0xffffff,
-    linewidth: 3.2,
-    transparent: true,
-    opacity: 0.98,
-    worldUnits: false,
-  });
-  selectionBorderMaterial.depthTest = false;
-  selectionBorderMaterial.depthWrite = false;
-
-  let selectionBorderGeometry = new LineSegmentsGeometry();
-  let selectionBorder = new LineSegments2(
-    selectionBorderGeometry,
-    selectionBorderMaterial,
-  );
-  selectionBorder.name = "territory-selection-border";
-  selectionBorder.frustumCulled = false;
-  selectionBorder.renderOrder = 41;
-  selectionBorder.visible = false;
-  scene.add(selectionBorder);
-
-  const expansionFillMaterial = new MeshBasicMaterial({
+  const expansionMaterial = new MeshBasicMaterial({
     color: 0xffefae,
     transparent: true,
     opacity: 0.2,
     depthWrite: false,
   });
-  expansionFillMaterial.depthTest = false;
+  expansionMaterial.depthTest = false;
 
-  let expansionFillGeometry = new BufferGeometry();
-  let expansionFill = new Mesh(
-    expansionFillGeometry,
-    expansionFillMaterial,
-  );
-  expansionFill.name = "territory-expansion-fill";
-  expansionFill.renderOrder = 42;
-  expansionFill.visible = false;
-  scene.add(expansionFill);
+  let expansionGeometry = new BufferGeometry();
+  let expansionMesh = new Mesh(expansionGeometry, expansionMaterial);
+  expansionMesh.name = "territory-expansion-fill";
+  expansionMesh.renderOrder = 42;
+  expansionMesh.visible = false;
+  scene.add(expansionMesh);
 
   const capitalGeometry = new CylinderGeometry(7, 10, 22, 6);
   const capitalMaterials: MeshStandardMaterial[] = [];
@@ -163,6 +155,8 @@ export function createTerritoryView(
   const rebuildOwnership = (): void => {
     const tintPositions: number[] = [];
     const tintColors: number[] = [];
+    const corePositions: number[] = [];
+    const coreColors: number[] = [];
     const borderPositions: number[] = [];
     const borderColors: number[] = [];
 
@@ -170,15 +164,33 @@ export function createTerritoryView(
       if (!cell.owner) continue;
 
       const polygon = state.cellPolygon(cell);
-      const color = new Color(state.nation(cell.owner).color);
+      const nationColor = new Color(state.nation(cell.owner).color);
 
       pushPolygonFill(
         tintPositions,
         tintColors,
         polygon,
         TINT_Y,
-        color,
+        nationColor,
       );
+
+      const sameOwnerNeighbors = state.neighbors(cell).filter(
+        (neighbor) => neighbor.owner === cell.owner,
+      ).length;
+
+      if (sameOwnerNeighbors >= 3) {
+        const coreColor = nationColor
+          .clone()
+          .lerp(MAP_INK, 0.08);
+
+        pushPolygonFill(
+          corePositions,
+          coreColors,
+          polygon,
+          CORE_Y,
+          coreColor,
+        );
+      }
 
       const neighbors = [
         {
@@ -212,7 +224,7 @@ export function createTerritoryView(
 
         const borderColor = edge.neighbor?.owner
           ? SHARED_BORDER
-          : color.clone().lerp(WHITE, 0.52);
+          : nationColor.clone().lerp(MAP_INK, 0.46);
 
         pushPolylineSegments(
           borderPositions,
@@ -224,14 +236,13 @@ export function createTerritoryView(
       }
     }
 
-    const nextTintGeometry = new BufferGeometry();
-    nextTintGeometry.setAttribute(
-      "position",
-      new Float32BufferAttribute(tintPositions, 3),
+    const nextTintGeometry = buildColoredGeometry(
+      tintPositions,
+      tintColors,
     );
-    nextTintGeometry.setAttribute(
-      "color",
-      new Float32BufferAttribute(tintColors, 3),
+    const nextCoreGeometry = buildColoredGeometry(
+      corePositions,
+      coreColors,
     );
 
     const nextBorderGeometry = new LineSegmentsGeometry();
@@ -240,115 +251,97 @@ export function createTerritoryView(
       nextBorderGeometry.setColors(borderColors);
     }
 
-    scene.remove(tintMesh, borderLines);
+    scene.remove(tintMesh, coreMesh, borderLines);
     tintGeometry.dispose();
+    coreGeometry.dispose();
     borderGeometry.dispose();
 
     tintGeometry = nextTintGeometry;
     tintMesh = new Mesh(tintGeometry, tintMaterial);
-    tintMesh.name = "territory-vector-fill";
+    tintMesh.name = "territory-fill";
     tintMesh.renderOrder = 10;
 
+    coreGeometry = nextCoreGeometry;
+    coreMesh = new Mesh(coreGeometry, coreMaterial);
+    coreMesh.name = "territory-core-fill";
+    coreMesh.renderOrder = 11;
+
     borderGeometry = nextBorderGeometry;
-    borderLines = new LineSegments2(borderGeometry, borderMaterial);
-    borderLines.name = "territory-vector-borders";
+    borderLines = new LineSegments2(
+      borderGeometry,
+      borderMaterial,
+    );
+    borderLines.name = "territory-borders";
     borderLines.frustumCulled = false;
     borderLines.renderOrder = 30;
 
-    scene.add(tintMesh, borderLines);
+    scene.add(tintMesh, coreMesh, borderLines);
   };
 
   const rebuildSelection = (cell: TerritoryCell | null): void => {
-    scene.remove(selectionFill, selectionBorder);
-    selectionFillGeometry.dispose();
-    selectionBorderGeometry.dispose();
+    scene.remove(selectionMesh);
+    selectionGeometry.dispose();
+    selectionGeometry = new BufferGeometry();
 
-    selectionFillGeometry = new BufferGeometry();
-    selectionBorderGeometry = new LineSegmentsGeometry();
-
-    if (!cell) {
-      selectionFill = new Mesh(
-        selectionFillGeometry,
-        selectionFillMaterial,
+    // Avoid exposing the hidden internal grid. Owned/foreign selection
+    // highlights the whole nation. Neutral selection is communicated by
+    // the HUD, while an active claim uses the expansion target fill.
+    if (!cell?.owner) {
+      selectionMesh = new Mesh(
+        selectionGeometry,
+        selectionMaterial,
       );
-      selectionBorder = new LineSegments2(
-        selectionBorderGeometry,
-        selectionBorderMaterial,
-      );
-      selectionFill.visible = false;
-      selectionBorder.visible = false;
-      scene.add(selectionFill, selectionBorder);
+      selectionMesh.visible = false;
+      scene.add(selectionMesh);
       return;
     }
 
-    const polygon = state.cellPolygon(cell);
     const positions: number[] = [];
     const colors: number[] = [];
-    const baseColor = selectionColor(state, cell);
+    const selectedColor = new Color(
+      state.nation(cell.owner).color,
+    ).lerp(WHITE, 0.15);
 
-    pushPolygonFill(
+    for (const ownedCell of state.cells) {
+      if (ownedCell.owner !== cell.owner) continue;
+
+      pushPolygonFill(
+        positions,
+        colors,
+        state.cellPolygon(ownedCell),
+        SELECTION_Y,
+        selectedColor,
+      );
+    }
+
+    selectionGeometry = buildColoredGeometry(
       positions,
       colors,
-      polygon,
-      SELECTION_Y,
-      baseColor,
     );
-    selectionFillGeometry.setAttribute(
-      "position",
-      new Float32BufferAttribute(positions, 3),
+    selectionMesh = new Mesh(
+      selectionGeometry,
+      selectionMaterial,
     );
-
-    const selectionSegments: number[] = [];
-    const selectionColors: number[] = [];
-    pushClosedPolylineSegments(
-      selectionSegments,
-      selectionColors,
-      polygon,
-      SELECTION_Y + 0.01,
-      baseColor.clone().lerp(WHITE, 0.35),
-    );
-    selectionBorderGeometry.setPositions(selectionSegments);
-    selectionBorderGeometry.setColors(selectionColors);
-
-    selectionFillMaterial.color.copy(baseColor);
-    selectionBorderMaterial.color.copy(
-      baseColor.clone().lerp(WHITE, 0.35),
-    );
-
-    selectionFill = new Mesh(
-      selectionFillGeometry,
-      selectionFillMaterial,
-    );
-    selectionFill.name = "territory-selection-fill";
-    selectionFill.renderOrder = 40;
-
-    selectionBorder = new LineSegments2(
-      selectionBorderGeometry,
-      selectionBorderMaterial,
-    );
-    selectionBorder.name = "territory-selection-border";
-    selectionBorder.frustumCulled = false;
-    selectionBorder.renderOrder = 41;
-
-    scene.add(selectionFill, selectionBorder);
+    selectionMesh.name = "territory-nation-selection";
+    selectionMesh.renderOrder = 40;
+    scene.add(selectionMesh);
   };
 
   const rebuildExpansion = (cell: TerritoryCell | null): void => {
-    scene.remove(expansionFill);
-    expansionFillGeometry.dispose();
-    expansionFillGeometry = new BufferGeometry();
+    scene.remove(expansionMesh);
+    expansionGeometry.dispose();
+    expansionGeometry = new BufferGeometry();
 
     if (!cell) {
-      expansionFill = new Mesh(
-        expansionFillGeometry,
-        expansionFillMaterial,
+      expansionMesh = new Mesh(
+        expansionGeometry,
+        expansionMaterial,
       );
-      expansionFill.visible = false;
-      scene.add(expansionFill);
+      expansionMesh.visible = false;
+      scene.add(expansionMesh);
       return;
     }
 
-    const polygon = state.cellPolygon(cell);
     const positions: number[] = [];
     const colors: number[] = [];
     const color = new Color(0xffefae);
@@ -356,31 +349,37 @@ export function createTerritoryView(
     pushPolygonFill(
       positions,
       colors,
-      polygon,
+      state.cellPolygon(cell),
       EXPANSION_Y,
       color,
     );
-    expansionFillGeometry.setAttribute(
+
+    expansionGeometry.setAttribute(
       "position",
       new Float32BufferAttribute(positions, 3),
     );
 
-    expansionFill = new Mesh(
-      expansionFillGeometry,
-      expansionFillMaterial,
+    expansionMesh = new Mesh(
+      expansionGeometry,
+      expansionMaterial,
     );
-    expansionFill.name = "territory-expansion-fill";
-    expansionFill.renderOrder = 42;
-    scene.add(expansionFill);
+    expansionMesh.name = "territory-expansion-fill";
+    expansionMesh.renderOrder = 42;
+    scene.add(expansionMesh);
   };
 
   const sync = (current: TerritoryState): void => {
-    if (lastVersion !== current.version) {
+    const versionChanged = lastVersion !== current.version;
+
+    if (versionChanged) {
       lastVersion = current.version;
       rebuildOwnership();
     }
 
-    if (lastSelectedId !== current.selectedCellId) {
+    if (
+      lastSelectedId !== current.selectedCellId ||
+      (versionChanged && current.selectedCell()?.owner)
+    ) {
       lastSelectedId = current.selectedCellId;
       rebuildSelection(current.selectedCell());
     }
@@ -393,11 +392,11 @@ export function createTerritoryView(
 
     if (current.expansion) {
       const progress = current.expansionProgress();
-      expansionFillMaterial.opacity =
-        0.12 + Math.sin(progress * Math.PI) * 0.28;
-      expansionFill.visible = true;
+      expansionMaterial.opacity =
+        0.16 + Math.sin(progress * Math.PI) * 0.22;
+      expansionMesh.visible = true;
     } else {
-      expansionFill.visible = false;
+      expansionMesh.visible = false;
     }
   };
 
@@ -409,38 +408,54 @@ export function createTerritoryView(
         Math.max(1, width),
         Math.max(1, height),
       );
-      selectionBorderMaterial.resolution.set(
-        Math.max(1, width),
-        Math.max(1, height),
-      );
     },
     sync,
     dispose(): void {
       scene.remove(
         tintMesh,
+        coreMesh,
         borderLines,
-        selectionFill,
-        selectionBorder,
-        expansionFill,
+        selectionMesh,
+        expansionMesh,
         ...capitals,
       );
 
       tintGeometry.dispose();
+      coreGeometry.dispose();
       borderGeometry.dispose();
-      selectionFillGeometry.dispose();
-      selectionBorderGeometry.dispose();
-      expansionFillGeometry.dispose();
+      selectionGeometry.dispose();
+      expansionGeometry.dispose();
 
       tintMaterial.dispose();
+      coreMaterial.dispose();
       borderMaterial.dispose();
-      selectionFillMaterial.dispose();
-      selectionBorderMaterial.dispose();
-      expansionFillMaterial.dispose();
+      selectionMaterial.dispose();
+      expansionMaterial.dispose();
 
       capitalGeometry.dispose();
       for (const material of capitalMaterials) material.dispose();
     },
   };
+}
+
+function buildColoredGeometry(
+  positions: number[],
+  colors: number[],
+): BufferGeometry {
+  const geometry = new BufferGeometry();
+
+  if (positions.length > 0) {
+    geometry.setAttribute(
+      "position",
+      new Float32BufferAttribute(positions, 3),
+    );
+    geometry.setAttribute(
+      "color",
+      new Float32BufferAttribute(colors, 3),
+    );
+  }
+
+  return geometry;
 }
 
 function pushPolygonFill(
@@ -510,42 +525,6 @@ function pushPolylineSegments(
       color.r, color.g, color.b,
     );
   }
-}
-
-function pushClosedPolylineSegments(
-  positions: number[],
-  colors: number[],
-  polygon: readonly Point2[],
-  y: number,
-  color: Color,
-): void {
-  for (let index = 0; index < polygon.length; index += 1) {
-    const a = polygon[index];
-    const b = polygon[(index + 1) % polygon.length];
-    if (!a || !b) continue;
-
-    positions.push(
-      a.x, y, a.z,
-      b.x, y, b.z,
-    );
-    colors.push(
-      color.r, color.g, color.b,
-      color.r, color.g, color.b,
-    );
-  }
-}
-
-function selectionColor(
-  state: TerritoryState,
-  cell: TerritoryCell,
-): Color {
-  if (cell.owner) {
-    return new Color(state.nation(cell.owner).color);
-  }
-
-  return new Color(
-    state.isPlayerFrontier(cell) ? 0xf0d98a : 0xd5d6cc,
-  );
 }
 
 function nationIndex(id: NationId): number {

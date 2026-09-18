@@ -54,7 +54,7 @@ export class AppRuntime {
       "STAGE 2 · TERRITORY",
     );
     this.diagnostics.setContext(
-      "Stage 2-D · vector borders · shape-matched selection",
+      "Stage 2-E · filled nations · compact growth · unified owners",
     );
 
     this.viewport = new ViewportController(

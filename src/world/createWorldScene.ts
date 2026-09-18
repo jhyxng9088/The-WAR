@@ -22,7 +22,7 @@ export interface WorldSceneHandle {
 
 export function createWorldScene(): WorldSceneHandle {
   const scene = new Scene();
-  scene.background = new Color(0xb7c9c8);
+  scene.background = new Color(0xb5c3c2);
 
   const hemisphere = new HemisphereLight(0xeaf1e5, 0x566652, 1.8);
   scene.add(hemisphere);
@@ -33,7 +33,7 @@ export function createWorldScene(): WorldSceneHandle {
 
   const groundGeometry = new PlaneGeometry(WORLD_WIDTH, WORLD_DEPTH, 1, 1);
   const groundMaterial = new MeshStandardMaterial({
-    color: 0x7f9964,
+    color: 0x73865f,
     roughness: 1,
     metalness: 0,
   });
