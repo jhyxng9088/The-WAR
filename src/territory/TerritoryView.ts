@@ -617,9 +617,21 @@ function pushTriangulatedLoopFill(
   const triangles = ShapeUtils.triangulateShape(contour, []);
 
   for (const triangle of triangles) {
-    const a = loop[triangle[0]];
-    const b = loop[triangle[1]];
-    const c = loop[triangle[2]];
+    const aIndex = triangle[0];
+    const bIndex = triangle[1];
+    const cIndex = triangle[2];
+
+    if (
+      aIndex === undefined ||
+      bIndex === undefined ||
+      cIndex === undefined
+    ) {
+      continue;
+    }
+
+    const a = loop[aIndex];
+    const b = loop[bIndex];
+    const c = loop[cIndex];
     if (!a || !b || !c) continue;
 
     pushUpFacingTriangle(
