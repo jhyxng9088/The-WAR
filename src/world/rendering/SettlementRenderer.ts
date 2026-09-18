@@ -48,22 +48,22 @@ function collectSettlement(
 ): void {
   const [cx, cz] = settlement.position;
   const capital = settlement.kind === 'capital';
-  const buildingCount = capital ? 14 : 6;
-  const radius = capital ? 11 : 6.5;
+  const buildingCount = capital ? 12 : 5;
+  const radius = capital ? 7.2 : 4.4;
   const tint = new THREE.Color(territoryColor);
 
   for (let i = 0; i < buildingCount; i += 1) {
     const angle = deterministic01(cx, cz, 300 + i) * Math.PI * 2;
-    const minDistance = capital ? 5.8 : 1.8;
+    const minDistance = capital ? 3.8 : 1.2;
     const distance = minDistance
       + Math.sqrt(deterministic01(cx, cz, 340 + i)) * (radius - minDistance);
     const x = cx + Math.cos(angle) * distance;
     const z = cz + Math.sin(angle) * distance * 0.82;
     if (!isLandAt(x, z)) continue;
 
-    const width = (capital ? 2.5 : 2.0) + deterministic01(x, z, 370 + i) * 1.7;
-    const depth = 1.9 + deterministic01(x, z, 390 + i) * 1.5;
-    const height = (capital ? 2.7 : 2.2) + deterministic01(x, z, 410 + i) * 2.0;
+    const width = (capital ? 1.35 : 1.1) + deterministic01(x, z, 370 + i) * 0.85;
+    const depth = 1.05 + deterministic01(x, z, 390 + i) * 0.75;
+    const height = (capital ? 1.6 : 1.3) + deterministic01(x, z, 410 + i) * 1.05;
 
     const wallColor = WALL_LIGHT.clone().lerp(
       WALL_DARK,
@@ -87,10 +87,10 @@ function collectSettlement(
     });
   }
 
-  const fieldCount = capital ? 10 : 3;
+  const fieldCount = capital ? 8 : 3;
   for (let i = 0; i < fieldCount; i += 1) {
     const angle = (i / fieldCount) * Math.PI * 2 + deterministic01(cx, cz, 500 + i) * 0.62;
-    const distance = (capital ? 13 : 7.5) + deterministic01(cx, cz, 520 + i) * (capital ? 11 : 5);
+    const distance = (capital ? 8.5 : 5.2) + deterministic01(cx, cz, 520 + i) * (capital ? 8 : 3.6);
     const x = cx + Math.cos(angle) * distance;
     const z = cz + Math.sin(angle) * distance * 0.78;
     if (!isLandAt(x, z)) continue;
@@ -98,8 +98,8 @@ function collectSettlement(
     fields.push({
       position: new THREE.Vector3(x, terrainHeight(x, z) + 0.14, z),
       rotation: angle + deterministic01(x, z, 540 + i) * 0.5,
-      width: 6.5 + deterministic01(x, z, 560 + i) * 7.5,
-      depth: 2.8 + deterministic01(x, z, 580 + i) * 4.2,
+      width: 4.2 + deterministic01(x, z, 560 + i) * 4.8,
+      depth: 2.0 + deterministic01(x, z, 580 + i) * 2.8,
       color: FIELD_GREEN.clone().lerp(FIELD_GOLD, deterministic01(x, z, 600 + i) * 0.82),
     });
   }
@@ -147,10 +147,10 @@ function addBuildingInstances(scene: THREE.Scene, buildings: readonly BuildingIn
 
     position.set(
       building.position.x,
-      building.position.y + building.height + 0.55,
+      building.position.y + building.height + 0.31,
       building.position.z,
     );
-    scale.set(building.width * 0.98, 1.5 + building.height * 0.16, building.depth * 0.98);
+    scale.set(building.width * 0.96, 0.86 + building.height * 0.14, building.depth * 0.96);
     matrix.compose(position, quaternion, scale);
     roofs.setMatrixAt(index, matrix);
     roofs.setColorAt(index, building.roofColor);
@@ -209,14 +209,14 @@ function addCapitalKeeps(scene: THREE.Scene): void {
     roughness: 0.96,
     metalness: 0,
   });
-  const towerGeometry = new THREE.CylinderGeometry(1.6, 1.8, 7.6, 6);
+  const towerGeometry = new THREE.CylinderGeometry(0.78, 0.9, 4.0, 6);
   const towerMaterial = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     roughness: 0.96,
     metalness: 0,
     flatShading: true,
   });
-  const roofGeometry = new THREE.ConeGeometry(2.25, 2.8, 6);
+  const roofGeometry = new THREE.ConeGeometry(1.18, 1.5, 6);
   const roofMaterial = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     roughness: 0.94,
@@ -245,7 +245,7 @@ function addCapitalKeeps(scene: THREE.Scene): void {
 
   const matrix = new THREE.Matrix4();
   const identity = new THREE.Quaternion();
-  const keepScale = new THREE.Vector3(10.5, 6.2, 8.8);
+  const keepScale = new THREE.Vector3(5.4, 3.2, 4.6);
   const wallBase = new THREE.Color(0xd9d3bd);
   let towerIndex = 0;
 
@@ -256,7 +256,7 @@ function addCapitalKeeps(scene: THREE.Scene): void {
     const wallColor = wallBase.clone().lerp(territoryColor, 0.10);
 
     matrix.compose(
-      new THREE.Vector3(x, baseY + 3.1, z),
+      new THREE.Vector3(x, baseY + 1.6, z),
       identity,
       keepScale,
     );
@@ -264,10 +264,10 @@ function addCapitalKeeps(scene: THREE.Scene): void {
     keeps.setColorAt(territoryIndex, wallColor);
 
     const offsets = [
-      [-4.4, -3.7],
-      [4.4, -3.7],
-      [-4.4, 3.7],
-      [4.4, 3.7],
+      [-2.3, -1.95],
+      [2.3, -1.95],
+      [-2.3, 1.95],
+      [2.3, 1.95],
     ] as const;
 
     for (const [dx, dz] of offsets) {
@@ -276,7 +276,7 @@ function addCapitalKeeps(scene: THREE.Scene): void {
       const ty = terrainHeight(tx, tz);
 
       matrix.compose(
-        new THREE.Vector3(tx, ty + 3.8, tz),
+        new THREE.Vector3(tx, ty + 2.0, tz),
         identity,
         new THREE.Vector3(1, 1, 1),
       );
@@ -284,7 +284,7 @@ function addCapitalKeeps(scene: THREE.Scene): void {
       towers.setColorAt(towerIndex, wallColor);
 
       matrix.compose(
-        new THREE.Vector3(tx, ty + 8.85, tz),
+        new THREE.Vector3(tx, ty + 4.75, tz),
         identity,
         new THREE.Vector3(1, 1, 1),
       );
@@ -340,8 +340,8 @@ function addTerritoryLabel(scene: THREE.Scene, name: string, [x, z]: XZ, color: 
   const sprite = new THREE.Sprite(
     new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }),
   );
-  sprite.position.set(x, terrainHeight(x, z) + 21, z);
-  sprite.scale.set(28, 7, 1);
+  sprite.position.set(x, terrainHeight(x, z) + 11.5, z);
+  sprite.scale.set(18, 4.5, 1);
   sprite.renderOrder = 8;
   scene.add(sprite);
 }
