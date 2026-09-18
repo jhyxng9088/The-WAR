@@ -128,7 +128,7 @@ export async function addVegetation(scene: THREE.Scene): Promise<VegetationContr
           : nextMode === 'mid'
             ? 0.34
             : 0.18;
-    forestMass.material.uniforms.forestOpacity.value = forestOpacity;
+    forestMass.material.uniforms['forestOpacity']!.value = forestOpacity;
   };
 
   return {
