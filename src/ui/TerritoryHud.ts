@@ -59,11 +59,11 @@ export class TerritoryHud {
     this.statsLine.textContent =
       owned + " territory · " +
       frontier + " frontier options · " +
-      state.nations.length + " nations";
+      state.nations.length + " nations · rivals are expanding";
 
     if (!selected) {
       this.selectionLine.textContent =
-        "Tap a frontier dot to claim neutral land.";
+        "Tap neutral land along your border to expand.";
       return;
     }
 

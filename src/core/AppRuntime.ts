@@ -54,7 +54,7 @@ export class AppRuntime {
       "STAGE 2 · TERRITORY",
     );
     this.diagnostics.setContext(
-      "Stage 2-B · 5 nations · frontier expansion sandbox",
+      "Stage 2-C · organic borders · nations expand over time",
     );
 
     this.viewport = new ViewportController(
@@ -92,7 +92,7 @@ export class AppRuntime {
 
       if (completed) {
         this.diagnostics.setGesture(
-          "Territory claimed · tap another adjacent neutral cell",
+          "Territory claimed · keep expanding before rivals reach you",
         );
       }
 

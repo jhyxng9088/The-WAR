@@ -8,49 +8,41 @@ Updated: 2026-09-19
 
 ## Gameplay-first world override
 
-Detailed terrain work is paused by user decision.
+Detailed terrain remains paused. The active world is a large flat green gameplay sandbox while territory, economy, war, and AI are built.
 
-Current production gameplay sandbox:
-- continent-scale flat green ground
-- no detailed terrain rendering
-- world/terrain abstraction remains intact for later return
-- gameplay loop takes priority over terrain art until the core match is fun
-
-## Stage 2-B active slice
+## Stage 2-C active slice
 
 Implemented in this pass:
-- five nations with separated starting locations
-- one capital per nation
-- irregular seeded starting territory blobs
-- higher-resolution hidden territory grid
-- no internal grid lines
-- smaller cells so outer silhouettes feel less blocky
-- irregularized outer border segments
-- shared nation-to-nation borders
-- nation-specific territory tint
-- player frontier dots showing legal expansion options
-- circular selection feedback instead of square-cell highlighting
-- selected foreign territory identifies the nation
-- player HUD with owned territory, frontier count, selected land, and expansion progress
-- enemy territory cannot be claimed through peaceful expansion
+- logical territory cells remain the simulation source of truth
+- visual cell centers are jittered into an irregular Voronoi-like layout
+- hit testing uses the same irregular cell centers, so taps match the visible territory
+- territory colors and borders are rendered into one smooth canvas texture
+- square cell fills / frontier-dot grid visuals are removed
+- neutral borders use lightened nation colors
+- nation-to-nation borders use a shared pale border
+- 5 nations remain visible with separate capitals
+- non-player nations now expand into neutral frontier land over time
+- AI expansion is deterministic and intentionally simple
+- player still manually chooses each expansion target
+- enemy territory remains protected from peaceful claiming
+- HUD now states that rival nations are expanding
 
 ## Stage 2 next work
 
 After device review:
-- tune starting positions / territory sizes
-- decide whether expansion should be region-click, brush-like spread, or command-based
-- add simple non-player expansion behavior if it improves Stage 2 testing
-- improve border contour further if the hidden cell structure is still visually obvious
-- define the final expansion cost / cooldown model before Stage 3 resources
+- tune organic border resolution / thickness if needed
+- decide final expansion command style
+- add expansion pressure/cost so rapid land grabbing has a tradeoff
+- introduce region-level grouping above internal cells
+- finish the Stage 2 territory model before moving to Stage 3 resources
 
 ## Review gate
 
 Confirm on device:
-- multiple nations are clearly visible
-- borders read as national borders rather than a board grid
-- frontier dots make legal expansion obvious
-- player expansion still works
-- foreign land is selectable but not peacefully claimable
-- HUD remains readable on phone
-- camera gestures still work
+- territory no longer reads like a visible square grid
+- tapping matches the visible irregular territory shapes
+- rival nations visibly grow over time
+- player expansion still feels responsive
+- borders remain readable as nations approach one another
+- HUD stays readable on phone
 - mobile performance remains acceptable
