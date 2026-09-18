@@ -1,69 +1,223 @@
 import * as THREE from 'three';
-import { createRibbonGeometry, type RibbonSample } from '../../rendering/geometry/createRibbonGeometry';
-import { isLandAt, terrainHeight, type XZ } from '../WorldField';
-import type { StrategicTerritory } from '../StrategicWorld';
+import {
+  AXIAL_DIRECTIONS,
+  TERRITORY_HEX_SIZE,
+  axialToWorld,
+  hexCorners,
+} from '../../territory/TerritoryGrid';
+import {
+  TerritoryController,
+  type TerritoryCellView,
+} from '../../territory/TerritoryController';
+import { terrainHeight } from '../WorldField';
 
-const TINT_GRID = 10;
-const BORDER_SAMPLE_SPACING = 4.2;
-
-export function addTerritory(scene: THREE.Scene, territory: StrategicTerritory): void {
-  if (territory.polygon.length < 3) return;
-  addTerrainTint(scene, territory);
-  addBorder(scene, territory.color, sampleBorder(territory.polygon));
+export interface TerritoryRenderController {
+  update(): void;
+  dispose(): void;
 }
 
-function addTerrainTint(scene: THREE.Scene, territory: StrategicTerritory): void {
-  const geometry = createTerrainConformingFill(territory.polygon);
-  const tint = new THREE.Mesh(
-    geometry,
-    new THREE.MeshBasicMaterial({
-      color: territory.color,
-      transparent: true,
-      opacity: 0.085,
-      depthWrite: false,
-      polygonOffset: true,
-      polygonOffsetFactor: -1,
-      polygonOffsetUnits: -1,
-    }),
-  );
-  tint.name = `territory-${territory.id}-tint`;
-  tint.renderOrder = 3.2;
-  scene.add(tint);
+export function createTerritoryRenderer(
+  scene: THREE.Scene,
+  territory: TerritoryController,
+): TerritoryRenderController {
+  const root = new THREE.Group();
+  root.name = 'dynamic-territory';
+
+  const fillMaterial = new THREE.MeshBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.17,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  });
+  const fill = new THREE.Mesh(new THREE.BufferGeometry(), fillMaterial);
+  fill.name = 'territory-fill';
+  fill.renderOrder = 3.2;
+
+  const borderMaterial = new THREE.MeshBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.86,
+    depthWrite: false,
+  });
+  const border = new THREE.Mesh(new THREE.BufferGeometry(), borderMaterial);
+  border.name = 'territory-border';
+  border.renderOrder = 4.6;
+
+  const selectionMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.86,
+    depthWrite: false,
+  });
+  const selection = new THREE.Mesh(new THREE.BufferGeometry(), selectionMaterial);
+  selection.name = 'territory-selection';
+  selection.renderOrder = 5.1;
+  selection.visible = false;
+
+  const progressMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.82,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const progressGeometry = new THREE.RingGeometry(4.7, 6.1, 24);
+  progressGeometry.rotateX(-Math.PI / 2);
+  const progress = new THREE.Mesh(progressGeometry, progressMaterial);
+  progress.name = 'territory-expansion-progress';
+  progress.renderOrder = 5.2;
+  progress.visible = false;
+
+  root.add(fill, border, selection, progress);
+  scene.add(root);
+
+  let lastStateRevision = -1;
+  let lastSelectionRevision = -1;
+
+  const update = (): void => {
+    const stateRevision = territory.getStateRevision();
+    if (stateRevision !== lastStateRevision) {
+      lastStateRevision = stateRevision;
+      replaceGeometry(fill, buildFillGeometry(territory));
+      replaceGeometry(border, buildBorderGeometry(territory));
+    }
+
+    const selectionRevision = territory.getSelectionRevision();
+    if (selectionRevision !== lastSelectionRevision) {
+      lastSelectionRevision = selectionRevision;
+      const selected = territory.getSelection();
+      selection.visible = Boolean(selected);
+      replaceGeometry(
+        selection,
+        selected ? buildSelectionGeometry(selected.cell) : new THREE.BufferGeometry(),
+      );
+    }
+
+    const activeExpansion = territory
+      .getExpansionOrders()
+      .find((order) => order.nationId === territory.activeNationId);
+    if (!activeExpansion) {
+      progress.visible = false;
+      return;
+    }
+
+    const cell = territory.getCells().find((item) => item.id === activeExpansion.cellId);
+    const nation = territory.getNation(activeExpansion.nationId);
+    if (!cell || !nation) {
+      progress.visible = false;
+      return;
+    }
+
+    progress.visible = true;
+    progress.position.set(cell.x, terrainHeight(cell.x, cell.z) + 0.58, cell.z);
+    const pulse = 0.72 + activeExpansion.progress * 0.82;
+    progress.scale.setScalar(pulse);
+    progress.rotation.z = activeExpansion.progress * Math.PI * 1.8;
+    progressMaterial.color.setHex(nation.color);
+  };
+
+  return {
+    update,
+    dispose: () => {
+      scene.remove(root);
+      fill.geometry.dispose();
+      border.geometry.dispose();
+      selection.geometry.dispose();
+      progressGeometry.dispose();
+      fillMaterial.dispose();
+      borderMaterial.dispose();
+      selectionMaterial.dispose();
+      progressMaterial.dispose();
+    },
+  };
 }
 
-function createTerrainConformingFill(polygon: readonly XZ[]): THREE.BufferGeometry {
-  let minX = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let minZ = Number.POSITIVE_INFINITY;
-  let maxZ = Number.NEGATIVE_INFINITY;
+function buildFillGeometry(territory: TerritoryController): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+  const color = new THREE.Color();
 
-  for (const [x, z] of polygon) {
-    minX = Math.min(minX, x);
-    maxX = Math.max(maxX, x);
-    minZ = Math.min(minZ, z);
-    maxZ = Math.max(maxZ, z);
+  for (const cell of territory.getCells()) {
+    if (!cell.ownerId) continue;
+    const nation = territory.getNation(cell.ownerId);
+    if (!nation) continue;
+
+    color.setHex(nation.color);
+    const base = positions.length / 3;
+    positions.push(cell.x, terrainHeight(cell.x, cell.z) + 0.16, cell.z);
+    colors.push(color.r, color.g, color.b);
+
+    const corners = hexCorners(cell.x, cell.z, TERRITORY_HEX_SIZE * 1.012);
+    for (const [x, z] of corners) {
+      positions.push(x, terrainHeight(x, z) + 0.16, z);
+      colors.push(color.r, color.g, color.b);
+    }
+
+    for (let i = 0; i < 6; i += 1) {
+      indices.push(base, base + 1 + i, base + 1 + ((i + 1) % 6));
+    }
   }
 
+  return geometryFrom(positions, colors, indices);
+}
+
+function buildBorderGeometry(territory: TerritoryController): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+  const color = new THREE.Color();
+
+  for (const cell of territory.getCells()) {
+    if (!cell.ownerId) continue;
+    const nation = territory.getNation(cell.ownerId);
+    if (!nation) continue;
+    color.setHex(nation.color);
+
+    AXIAL_DIRECTIONS.forEach(([dq, dr]) => {
+      const neighbor = territory.getCell(cell.q + dq, cell.r + dr);
+      if (!neighbor || neighbor.ownerId === cell.ownerId) return;
+
+      const [nx, nz] = axialToWorld(cell.q + dq, cell.r + dr);
+      appendSharedEdge(
+        positions,
+        colors,
+        indices,
+        cell.x,
+        cell.z,
+        nx,
+        nz,
+        color,
+        0.78,
+      );
+    });
+  }
+
+  return geometryFrom(positions, colors, indices);
+}
+
+function buildSelectionGeometry(cell: TerritoryCellView): THREE.BufferGeometry {
   const positions: number[] = [];
   const indices: number[] = [];
+  const corners = hexCorners(cell.x, cell.z, TERRITORY_HEX_SIZE * 0.97);
 
-  for (let x = minX; x < maxX; x += TINT_GRID) {
-    for (let z = minZ; z < maxZ; z += TINT_GRID) {
-      const cx = x + TINT_GRID * 0.5;
-      const cz = z + TINT_GRID * 0.5;
-      if (!pointInPolygon(cx, cz, polygon) || !isLandAt(cx, cz)) continue;
-
-      const x1 = Math.min(x + TINT_GRID, maxX);
-      const z1 = Math.min(z + TINT_GRID, maxZ);
-      const base = positions.length / 3;
-      positions.push(
-        x, terrainHeight(x, z) + 0.12, z,
-        x1, terrainHeight(x1, z) + 0.12, z,
-        x1, terrainHeight(x1, z1) + 0.12, z1,
-        x, terrainHeight(x, z1) + 0.12, z1,
-      );
-      indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-    }
+  for (let i = 0; i < 6; i += 1) {
+    const start = corners[i];
+    const end = corners[(i + 1) % 6];
+    if (!start || !end) continue;
+    appendSegmentQuad(
+      positions,
+      indices,
+      start[0],
+      start[1],
+      end[0],
+      end[1],
+      0.9,
+      0.31,
+    );
   }
 
   const geometry = new THREE.BufferGeometry();
@@ -73,62 +227,134 @@ function createTerrainConformingFill(polygon: readonly XZ[]): THREE.BufferGeomet
   return geometry;
 }
 
-function sampleBorder(polygon: readonly XZ[]): XZ[] {
-  const samples: XZ[] = [];
+function appendSharedEdge(
+  positions: number[],
+  colors: number[],
+  indices: number[],
+  x: number,
+  z: number,
+  neighborX: number,
+  neighborZ: number,
+  color: THREE.Color,
+  width: number,
+): void {
+  const dx = neighborX - x;
+  const dz = neighborZ - z;
+  const distance = Math.max(0.001, Math.hypot(dx, dz));
+  const px = -dz / distance;
+  const pz = dx / distance;
+  const mx = (x + neighborX) * 0.5;
+  const mz = (z + neighborZ) * 0.5;
+  const halfEdge = TERRITORY_HEX_SIZE * 0.5;
 
-  for (let i = 0; i < polygon.length; i += 1) {
-    const start = polygon[i];
-    const end = polygon[(i + 1) % polygon.length];
-    if (!start || !end) continue;
+  const ax = mx + px * halfEdge;
+  const az = mz + pz * halfEdge;
+  const bx = mx - px * halfEdge;
+  const bz = mz - pz * halfEdge;
 
-    const [ax, az] = start;
-    const [bx, bz] = end;
-    const segmentCount = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / BORDER_SAMPLE_SPACING));
-    for (let step = 0; step < segmentCount; step += 1) {
-      const t = step / segmentCount;
-      samples.push([
-        THREE.MathUtils.lerp(ax, bx, t),
-        THREE.MathUtils.lerp(az, bz, t),
-      ]);
-    }
-  }
-
-  return samples;
-}
-
-function addBorder(scene: THREE.Scene, color: number, borderPoints: readonly XZ[]): void {
-  const samples: RibbonSample[] = borderPoints.map(([x, z]) => ({
-    position: new THREE.Vector3(x, terrainHeight(x, z) + 0.24, z),
-    width: 1.15,
-  }));
-  const first = samples[0];
-  if (!first) return;
-  samples.push({ position: first.position.clone(), width: first.width });
-
-  const border = new THREE.Mesh(
-    createRibbonGeometry(samples),
-    new THREE.MeshBasicMaterial({
-      color,
-      transparent: true,
-      opacity: 0.9,
-      depthWrite: false,
-    }),
+  appendColoredSegmentQuad(
+    positions,
+    colors,
+    indices,
+    ax,
+    az,
+    bx,
+    bz,
+    width,
+    0.27,
+    color,
   );
-  border.name = 'stylized-territory-border';
-  border.renderOrder = 4.6;
-  scene.add(border);
 }
 
-function pointInPolygon(x: number, z: number, polygon: readonly XZ[]): boolean {
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
-    const a = polygon[i];
-    const b = polygon[j];
-    if (!a || !b) continue;
-    const [xi, zi] = a;
-    const [xj, zj] = b;
-    const intersects = zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi || Number.EPSILON) + xi;
-    if (intersects) inside = !inside;
+function appendColoredSegmentQuad(
+  positions: number[],
+  colors: number[],
+  indices: number[],
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number,
+  width: number,
+  heightOffset: number,
+  color: THREE.Color,
+): void {
+  const start = positions.length / 3;
+  const quad = segmentQuad(ax, az, bx, bz, width, heightOffset);
+  for (const [x, y, z] of quad) {
+    positions.push(x, y, z);
+    colors.push(color.r, color.g, color.b);
   }
-  return inside;
+  indices.push(start, start + 1, start + 2, start, start + 2, start + 3);
+}
+
+function appendSegmentQuad(
+  positions: number[],
+  indices: number[],
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number,
+  width: number,
+  heightOffset: number,
+): void {
+  const start = positions.length / 3;
+  const quad = segmentQuad(ax, az, bx, bz, width, heightOffset);
+  for (const [x, y, z] of quad) positions.push(x, y, z);
+  indices.push(start, start + 1, start + 2, start, start + 2, start + 3);
+}
+
+function segmentQuad(
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number,
+  width: number,
+  heightOffset: number,
+): readonly [number, number, number][] {
+  const dx = bx - ax;
+  const dz = bz - az;
+  const length = Math.max(0.001, Math.hypot(dx, dz));
+  const px = (-dz / length) * width * 0.5;
+  const pz = (dx / length) * width * 0.5;
+
+  const p0: [number, number, number] = [
+    ax + px,
+    terrainHeight(ax + px, az + pz) + heightOffset,
+    az + pz,
+  ];
+  const p1: [number, number, number] = [
+    bx + px,
+    terrainHeight(bx + px, bz + pz) + heightOffset,
+    bz + pz,
+  ];
+  const p2: [number, number, number] = [
+    bx - px,
+    terrainHeight(bx - px, bz - pz) + heightOffset,
+    bz - pz,
+  ];
+  const p3: [number, number, number] = [
+    ax - px,
+    terrainHeight(ax - px, az - pz) + heightOffset,
+    az - pz,
+  ];
+  return [p0, p1, p2, p3];
+}
+
+function geometryFrom(
+  positions: number[],
+  colors: number[],
+  indices: number[],
+): THREE.BufferGeometry {
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+function replaceGeometry(mesh: THREE.Mesh, geometry: THREE.BufferGeometry): void {
+  const previous = mesh.geometry;
+  mesh.geometry = geometry;
+  previous.dispose();
 }

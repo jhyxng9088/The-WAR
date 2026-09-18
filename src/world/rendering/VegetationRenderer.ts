@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { STRATEGIC_TERRITORIES } from '../StrategicWorld';
+import { NATIONS } from '../StrategicWorld';
 import {
   WORLD_HALF_DEPTH,
   WORLD_HALF_WIDTH,
@@ -30,9 +30,7 @@ export interface VegetationController {
 const TREE_SPACING = 5.4;
 const FOREST_PATCH_STEP = 25;
 const SETTLEMENT_CLEAR_RADIUS_SQ = 11 * 11;
-const settlementPositions = STRATEGIC_TERRITORIES.flatMap((territory) =>
-  [territory.capital, ...territory.settlements].map((settlement) => settlement.position),
-);
+const settlementPositions = NATIONS.map((nation) => nation.capital.position);
 
 export async function addVegetation(scene: THREE.Scene): Promise<VegetationController> {
   const points = collectTrees();

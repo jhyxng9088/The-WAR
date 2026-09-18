@@ -41,14 +41,14 @@ export class Game {
     this.input = new WorldInput(canvas, this.camera);
     this.performance = new RenderPerformance(this.renderer);
 
-    void createPrototypeWorld(this.scene)
+    void createPrototypeWorld(this.scene, this.canvas, this.camera.camera)
       .then((controller) => {
         if (this.disposed) {
           controller.dispose();
           return;
         }
         this.worldController = controller;
-        controller.update(this.camera.camera);
+        controller.update(this.camera.camera, 0);
       })
       .catch((error: unknown) => {
         console.error('THE WAR world initialization failed.', error);
@@ -64,9 +64,15 @@ export class Game {
 
   start(): void {
     if (this.frameId !== null) return;
+    let previousTimestamp: number | null = null;
     const render = (timestamp: number): void => {
+      const deltaSeconds = previousTimestamp === null
+        ? 0
+        : Math.min(0.1, Math.max(0, (timestamp - previousTimestamp) / 1000));
+      previousTimestamp = timestamp;
+
       this.input.update();
-      this.worldController?.update(this.camera.camera);
+      this.worldController?.update(this.camera.camera, deltaSeconds);
       this.performance.sample(timestamp);
       this.renderer.render(this.scene, this.camera.camera);
       this.frameId = requestAnimationFrame(render);
