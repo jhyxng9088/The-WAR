@@ -53,8 +53,13 @@ export const RIVERS: readonly RiverDefinition[] = [];
 const LAND_THRESHOLD = 0.028;
 const MAX_LAND_HEIGHT = 12.2;
 const AUTHORED_HEIGHT_BYTES = decodeHeightmapBase64(WORLD_HEIGHTMAP_U8);
+const MIN_RUNTIME_HEIGHTMAP_SIZE = 257;
 
-let HEIGHT_BYTES = AUTHORED_HEIGHT_BYTES;
+let SOURCE_HEIGHT_BYTES = AUTHORED_HEIGHT_BYTES.slice();
+let SOURCE_HEIGHTMAP_WIDTH = WORLD_HEIGHTMAP_WIDTH;
+let SOURCE_HEIGHTMAP_HEIGHT = WORLD_HEIGHTMAP_HEIGHT;
+
+let HEIGHT_VALUES = bytesToNormalizedValues(AUTHORED_HEIGHT_BYTES);
 let HEIGHTMAP_WIDTH = WORLD_HEIGHTMAP_WIDTH;
 let HEIGHTMAP_HEIGHT = WORLD_HEIGHTMAP_HEIGHT;
 let EXPECTED_SAMPLES = HEIGHTMAP_WIDTH * HEIGHTMAP_HEIGHT;
@@ -75,10 +80,15 @@ export function applyWorldHeightmapSource(bytes: Uint8Array, width: number, heig
     );
   }
 
-  HEIGHT_BYTES = bytes.slice();
-  HEIGHTMAP_WIDTH = width;
-  HEIGHTMAP_HEIGHT = height;
-  EXPECTED_SAMPLES = expectedSamples;
+  SOURCE_HEIGHT_BYTES = bytes.slice();
+  SOURCE_HEIGHTMAP_WIDTH = width;
+  SOURCE_HEIGHTMAP_HEIGHT = height;
+
+  const runtime = createRuntimeHeightmap(bytes, width, height);
+  HEIGHT_VALUES = runtime.values;
+  HEIGHTMAP_WIDTH = runtime.width;
+  HEIGHTMAP_HEIGHT = runtime.height;
+  EXPECTED_SAMPLES = HEIGHTMAP_WIDTH * HEIGHTMAP_HEIGHT;
   WATER_DISTANCE_CELLS = createDistanceField('water');
   LAND_DISTANCE_CELLS = createDistanceField('land');
 }
@@ -89,9 +99,9 @@ export function resetWorldHeightmapToAuthored(): void {
 
 export function getWorldHeightmapSnapshot(): WorldHeightmapSnapshot {
   return {
-    width: HEIGHTMAP_WIDTH,
-    height: HEIGHTMAP_HEIGHT,
-    bytes: HEIGHT_BYTES.slice(),
+    width: SOURCE_HEIGHTMAP_WIDTH,
+    height: SOURCE_HEIGHTMAP_HEIGHT,
+    bytes: SOURCE_HEIGHT_BYTES.slice(),
   };
 }
 
@@ -329,10 +339,10 @@ function heightmapValueAt(x: number, z: number): number {
   const tx = u - x0;
   const ty = v - y0;
 
-  const a = heightByteAt(x0, y0) / 255;
-  const b = heightByteAt(x1, y0) / 255;
-  const c = heightByteAt(x0, y1) / 255;
-  const d = heightByteAt(x1, y1) / 255;
+  const a = heightValueAtCell(x0, y0);
+  const b = heightValueAtCell(x1, y0);
+  const c = heightValueAtCell(x0, y1);
+  const d = heightValueAtCell(x1, y1);
   const top = a + (b - a) * tx;
   const bottom = c + (d - c) * tx;
   return top + (bottom - top) * ty;
@@ -369,21 +379,121 @@ function distanceFieldAt(field: Uint8Array, x: number, z: number): number {
   return cells * worldUnitsPerCell;
 }
 
-function heightByteAt(x: number, y: number): number {
-  return HEIGHT_BYTES[y * HEIGHTMAP_WIDTH + x] ?? 0;
+function heightValueAtCell(x: number, y: number): number {
+  return HEIGHT_VALUES[y * HEIGHTMAP_WIDTH + x] ?? 0;
+}
+
+function bytesToNormalizedValues(bytes: Uint8Array): Float32Array {
+  const values = new Float32Array(bytes.length);
+  for (let i = 0; i < bytes.length; i += 1) values[i] = (bytes[i] ?? 0) / 255;
+  return values;
+}
+
+function createRuntimeHeightmap(
+  bytes: Uint8Array,
+  width: number,
+  height: number,
+): { width: number; height: number; values: Float32Array } {
+  const targetWidth = Math.max(width, MIN_RUNTIME_HEIGHTMAP_SIZE);
+  const targetHeight = Math.max(height, MIN_RUNTIME_HEIGHTMAP_SIZE);
+
+  if (targetWidth === width && targetHeight === height) {
+    return { width, height, values: bytesToNormalizedValues(bytes) };
+  }
+
+  const values = new Float32Array(targetWidth * targetHeight);
+
+  const sourceAt = (x: number, y: number): number => {
+    const sx = Math.min(width - 1, Math.max(0, x));
+    const sy = Math.min(height - 1, Math.max(0, y));
+    return (bytes[sy * width + sx] ?? 0) / 255;
+  };
+
+  for (let y = 0; y < targetHeight; y += 1) {
+    const sourceY = (y / (targetHeight - 1)) * (height - 1);
+    const y1 = Math.floor(sourceY);
+    const ty = sourceY - y1;
+
+    for (let x = 0; x < targetWidth; x += 1) {
+      const sourceX = (x / (targetWidth - 1)) * (width - 1);
+      const x1 = Math.floor(sourceX);
+      const tx = sourceX - x1;
+
+      const row0 = catmullRom(
+        sourceAt(x1 - 1, y1 - 1),
+        sourceAt(x1, y1 - 1),
+        sourceAt(x1 + 1, y1 - 1),
+        sourceAt(x1 + 2, y1 - 1),
+        tx,
+      );
+      const row1 = catmullRom(
+        sourceAt(x1 - 1, y1),
+        sourceAt(x1, y1),
+        sourceAt(x1 + 1, y1),
+        sourceAt(x1 + 2, y1),
+        tx,
+      );
+      const row2 = catmullRom(
+        sourceAt(x1 - 1, y1 + 1),
+        sourceAt(x1, y1 + 1),
+        sourceAt(x1 + 1, y1 + 1),
+        sourceAt(x1 + 2, y1 + 1),
+        tx,
+      );
+      const row3 = catmullRom(
+        sourceAt(x1 - 1, y1 + 2),
+        sourceAt(x1, y1 + 2),
+        sourceAt(x1 + 1, y1 + 2),
+        sourceAt(x1 + 2, y1 + 2),
+        tx,
+      );
+
+      const a = sourceAt(x1, y1);
+      const b = sourceAt(x1 + 1, y1);
+      const c0 = sourceAt(x1, y1 + 1);
+      const d = sourceAt(x1 + 1, y1 + 1);
+      const top = a + (b - a) * tx;
+      const bottom = c0 + (d - c0) * tx;
+      const bilinear = top + (bottom - top) * ty;
+
+      let smoothed = clamp01(catmullRom(row0, row1, row2, row3, ty));
+
+      // Preserve the original bilinear land/water classification so smoothing
+      // cannot create tiny shoreline islands or holes.
+      if (bilinear <= LAND_THRESHOLD) {
+        smoothed = Math.min(smoothed, LAND_THRESHOLD);
+      } else {
+        smoothed = Math.max(smoothed, LAND_THRESHOLD + 0.00001);
+      }
+
+      values[y * targetWidth + x] = smoothed;
+    }
+  }
+
+  return { width: targetWidth, height: targetHeight, values };
+}
+
+function catmullRom(p0: number, p1: number, p2: number, p3: number, t: number): number {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return 0.5 * (
+    2 * p1
+      + (-p0 + p2) * t
+      + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2
+      + (-p0 + 3 * p1 - 3 * p2 + p3) * t3
+  );
 }
 
 function createDistanceField(target: 'water' | 'land'): Uint8Array {
   const size = EXPECTED_SAMPLES;
   const distance = new Float32Array(size);
-  const thresholdByte = Math.round(LAND_THRESHOLD * 255);
   const infinity = 1_000_000;
   const diagonal = Math.SQRT2;
 
   for (let y = 0; y < HEIGHTMAP_HEIGHT; y += 1) {
     for (let x = 0; x < HEIGHTMAP_WIDTH; x += 1) {
       const index = y * HEIGHTMAP_WIDTH + x;
-      const isWater = heightByteAt(x, y) <= thresholdByte;
+      const isWater = heightValueAtCell(x, y) <= LAND_THRESHOLD;
       const isTarget = target === 'water' ? isWater : !isWater;
       distance[index] = isTarget ? 0 : infinity;
     }
