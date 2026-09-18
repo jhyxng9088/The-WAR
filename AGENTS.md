@@ -9,6 +9,20 @@
 
 ## 0. Read this before coding
 
+
+## 0.1 Current gameplay-first override — 2026-09-19
+
+The user explicitly paused detailed terrain production after Stage 1 experiments.
+
+Until the core solo game loop is proven fun:
+- the active gameplay world is a continent-scale flat green sandbox
+- do not reintroduce mountains, rivers, forests, terrain props, or terrain-detail rendering as a blocker
+- preserve world / terrain interfaces so strategic terrain can return later without rewriting territory, economy, or military rules
+- prioritize territory expansion, economy, war, AI, and the playable loop
+- the low-poly terrain rules in this document remain the future visual target, but they are not the current implementation priority
+
+This override does **not** authorize deleting gameplay/terrain abstraction boundaries.
+
 THE WAR is a top-down territory-expansion war strategy game made primarily for friends to play together.
 
 The core fantasy is not "simulate a country in maximum detail." It is:

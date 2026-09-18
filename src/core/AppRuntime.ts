@@ -13,6 +13,7 @@ import { GameLoop } from "./GameLoop";
 import { ViewportController } from "./ViewportController";
 import { DiagnosticsOverlay } from "./diagnostics/DiagnosticsOverlay";
 import { RendererShell } from "./rendering/RendererShell";
+import { TerritoryHud } from "../ui/TerritoryHud";
 
 export class AppRuntime {
   private readonly viewportElement: HTMLDivElement;
@@ -21,6 +22,7 @@ export class AppRuntime {
   private readonly camera: StrategyCameraRig;
   private readonly territory = new TerritoryState();
   private readonly territoryView: TerritoryView;
+  private readonly territoryHud: TerritoryHud;
   private readonly diagnostics: DiagnosticsOverlay;
   private readonly viewport: ViewportController;
   private readonly gestures: MapGestureController;
@@ -44,13 +46,15 @@ export class AppRuntime {
       this.world.scene,
       this.territory,
     );
+    this.territoryHud = new TerritoryHud(this.root);
+    this.territoryHud.sync(this.territory);
 
     this.diagnostics = new DiagnosticsOverlay(
       this.root,
       "STAGE 2 · TERRITORY",
     );
     this.diagnostics.setContext(
-      "flat gameplay sandbox · tap adjacent neutral land to expand",
+      "Stage 2-B · 5 nations · frontier expansion sandbox",
     );
 
     this.viewport = new ViewportController(
@@ -84,6 +88,7 @@ export class AppRuntime {
     this.loop = new GameLoop((deltaSeconds) => {
       const completed = this.territory.update(deltaSeconds);
       this.territoryView.sync(this.territory);
+      this.territoryHud.sync(this.territory);
 
       if (completed) {
         this.diagnostics.setGesture(
@@ -113,6 +118,7 @@ export class AppRuntime {
     this.gestures.stop();
     this.viewport.stop();
     this.diagnostics.dispose();
+    this.territoryHud.dispose();
     this.territoryView.dispose();
     this.world.dispose();
     this.renderer.dispose();
@@ -130,6 +136,7 @@ export class AppRuntime {
 
     const result = this.territory.tapWorld(point.x, point.z);
     this.territoryView.sync(this.territory);
+    this.territoryHud.sync(this.territory);
     this.diagnostics.setGesture(result);
   }
 }
