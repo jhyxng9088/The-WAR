@@ -149,7 +149,7 @@ export function createTerritoryView(
     for (let py = 0; py < TEXTURE_HEIGHT; py += 1) {
       for (let px = 0; px < TEXTURE_WIDTH; px += 1) {
         const index = py * TEXTURE_WIDTH + px;
-        const owner = ownerMap[index];
+        const owner = ownerMap[index] ?? 0;
 
         if (owner === 0) continue;
 
