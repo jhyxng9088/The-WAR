@@ -11,31 +11,37 @@ export interface RiverPath {
 }
 
 const RIVERS: readonly RiverPath[] = [
-  {
-    points: [
-      [-520, -1510], [-430, -1260], [-300, -1010], [-120, -760],
-      [40, -510], [130, -220], [220, 80], [420, 360],
-      [690, 650], [990, 900], [1320, 1150], [1630, 1370],
+  makeRiver(
+    [
+      [-520, -1510], [-400, -1360], [-470, -1190], [-300, -1040],
+      [-360, -850], [-120, -720], [-40, -520], [120, -390],
+      [70, -170], [250, 10], [190, 220], [420, 390],
+      [520, 600], [760, 700], [850, 900], [1110, 1020],
+      [1260, 1200], [1630, 1370],
     ],
-    sourceWidth: 8,
-    mouthWidth: 28,
-  },
-  {
-    points: [
-      [-1540, -970], [-1480, -720], [-1400, -450], [-1510, -150],
-      [-1630, 120], [-1700, 420], [-1840, 720], [-2070, 980],
+    8,
+    28,
+  ),
+  makeRiver(
+    [
+      [-1540, -970], [-1430, -840], [-1510, -680], [-1390, -500],
+      [-1490, -330], [-1390, -130], [-1540, 40], [-1480, 250],
+      [-1650, 390], [-1630, 590], [-1840, 720], [-1880, 870],
+      [-2070, 980],
     ],
-    sourceWidth: 7,
-    mouthWidth: 23,
-  },
-  {
-    points: [
-      [1120, -1080], [1170, -820], [1260, -560], [1230, -260],
-      [1320, 20], [1490, 250], [1660, 450], [1900, 620], [2160, 720],
+    7,
+    23,
+  ),
+  makeRiver(
+    [
+      [1120, -1080], [1030, -940], [1160, -800], [1080, -630],
+      [1260, -500], [1160, -300], [1320, -120], [1240, 80],
+      [1430, 210], [1390, 390], [1600, 520], [1740, 470],
+      [1900, 620], [2020, 590], [2160, 720],
     ],
-    sourceWidth: 7,
-    mouthWidth: 24,
-  },
+    7,
+    24,
+  ),
 ] as const;
 
 interface RidgeDefinition {
@@ -52,8 +58,8 @@ const RIDGES: readonly RidgeDefinition[] = [
       [-470, -1390], [-40, -1190], [390, -1050], [820, -1080],
       [1240, -940], [1700, -640],
     ],
-    width: 175,
-    height: 405,
+    width: 215,
+    height: 365,
     passes: [
       [-1420, -1280],
       [-180, -1160],
@@ -65,8 +71,8 @@ const RIDGES: readonly RidgeDefinition[] = [
       [-2100, 930], [-1810, 650], [-1500, 500], [-1210, 540],
       [-960, 720], [-760, 1010], [-610, 1320],
     ],
-    width: 170,
-    height: 270,
+    width: 205,
+    height: 250,
     passes: [
       [-1580, 540],
       [-920, 760],
@@ -77,8 +83,8 @@ const RIDGES: readonly RidgeDefinition[] = [
       [760, -620], [980, -400], [1110, -120], [1090, 180],
       [1160, 480], [1320, 760], [1560, 1040],
     ],
-    width: 155,
-    height: 330,
+    width: 190,
+    height: 305,
     passes: [
       [1080, -70],
       [1210, 570],
@@ -135,18 +141,18 @@ export class WorldField {
 
     // Western fortress plateau: broad high land with a readable escarpment edge.
     const westPlateau = ellipseInfluence(x, z, -1120, -80, 960, 760);
-    height += smoothstep(0.10, 0.38, westPlateau) * 150;
-    height += smoothstep(0.42, 0.55, westPlateau) * 105;
+    height += smoothstep(0.10, 0.46, westPlateau) * 150;
+    height += smoothstep(0.48, 0.70, westPlateau) * 105;
 
     // Eastern uplift: lower than the western plateau, but cut by a long spine.
     const eastUpland = ellipseInfluence(x, z, 1390, 80, 900, 980);
-    height += smoothstep(0.12, 0.45, eastUpland) * 105;
-    height += smoothstep(0.5, 0.66, eastUpland) * 48;
+    height += smoothstep(0.12, 0.52, eastUpland) * 105;
+    height += smoothstep(0.52, 0.76, eastUpland) * 48;
 
     // Southern tableland creates a separate elevated war theatre.
     const southTableland = ellipseInfluence(x, z, 240, 1190, 1020, 560);
-    height += smoothstep(0.16, 0.48, southTableland) * 88;
-    height += smoothstep(0.54, 0.68, southTableland) * 42;
+    height += smoothstep(0.16, 0.56, southTableland) * 88;
+    height += smoothstep(0.58, 0.78, southTableland) * 42;
 
     // Broken north-east high country.
     const northEastShelf = ellipseInfluence(x, z, 1740, -590, 620, 560);
@@ -157,9 +163,9 @@ export class WorldField {
 
       for (const [passX, passZ] of ridge.passes) {
         height -=
-          gaussianDistance(x, z, passX, passZ, ridge.width * 0.78) *
+          gaussianDistance(x, z, passX, passZ, ridge.width * 0.95) *
           ridge.height *
-          0.78;
+          0.66;
       }
     }
 
@@ -178,7 +184,7 @@ export class WorldField {
       Math.sin(x * 0.0052 + z * 0.0012) * 5 +
       Math.sin(z * 0.0047 - x * 0.0018) * 4;
 
-    return Math.max(5, Math.min(690, height * coastFade + 4));
+    return Math.max(5, Math.min(620, height * coastFade + 4));
   }
 
   public slopeAt(x: number, z: number): number {
@@ -308,4 +314,57 @@ function smoothstep(edge0: number, edge1: number, value: number): number {
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
+}
+
+function makeRiver(
+  controls: readonly Point2[],
+  sourceWidth: number,
+  mouthWidth: number,
+): RiverPath {
+  return {
+    points: sampleCatmullRom(controls, 3),
+    sourceWidth,
+    mouthWidth,
+  };
+}
+
+function sampleCatmullRom(
+  controls: readonly Point2[],
+  samplesPerSpan: number,
+): Point2[] {
+  if (controls.length < 2) return [...controls];
+
+  const result: Point2[] = [];
+
+  for (let index = 0; index < controls.length - 1; index += 1) {
+    const p0 = controls[Math.max(0, index - 1)] ?? controls[index]!;
+    const p1 = controls[index]!;
+    const p2 = controls[index + 1]!;
+    const p3 = controls[Math.min(controls.length - 1, index + 2)] ?? p2;
+
+    for (let sample = 0; sample < samplesPerSpan; sample += 1) {
+      const t = sample / samplesPerSpan;
+      const t2 = t * t;
+      const t3 = t2 * t;
+
+      const x =
+        0.5 *
+        ((2 * p1[0]) +
+          (-p0[0] + p2[0]) * t +
+          (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 +
+          (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3);
+      const z =
+        0.5 *
+        ((2 * p1[1]) +
+          (-p0[1] + p2[1]) * t +
+          (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 +
+          (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3);
+
+      result.push([x, z]);
+    }
+  }
+
+  const last = controls[controls.length - 1];
+  if (last) result.push(last);
+  return result;
 }

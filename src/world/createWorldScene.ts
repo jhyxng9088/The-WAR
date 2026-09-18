@@ -34,8 +34,8 @@ export interface WorldSceneHandle {
   dispose(): void;
 }
 
-const TERRAIN_SEGMENTS_X = 180;
-const TERRAIN_SEGMENTS_Z = 132;
+const TERRAIN_SEGMENTS_X = 220;
+const TERRAIN_SEGMENTS_Z = 160;
 const FOREST_INSTANCE_COUNT = 460;
 
 export function createWorldScene(): WorldSceneHandle {
@@ -131,7 +131,7 @@ function createTerrain(field: WorldField): Mesh {
     vertexColors: true,
     roughness: 0.97,
     metalness: 0,
-    flatShading: true,
+    flatShading: false,
   });
 
   const mesh = new Mesh(geometry, material);

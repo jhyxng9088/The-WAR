@@ -8,27 +8,21 @@ Updated: 2026-09-18
 
 ### Active slice
 
-Second Stage 1 visual/control pass after real-device review:
-- stronger continent-scale relief
-- high western plateau with escarpment-like edge
-- much taller northern mountain crown
-- separate eastern spine and southern tableland
-- deeper basins and broader river valleys
-- mountain passes cut clearly through ridges
-- tiny forest markers; terrain color carries most forest mass
-- two-finger map rotation direction corrected
-- two-finger parallel vertical drag recognized as camera tilt
-- pinch zoom preserved
+Third Stage 1 terrain/control pass:
+- rivers use curved Catmull-Rom paths and stronger meanders
+- river valleys follow the same curved paths
+- mountain ridges remain dramatic but use broader falloff
+- plateau transitions are softened
+- terrain mesh resolution increased
+- terrain uses smooth vertex normals instead of faceted flat shading
+- two-finger vertical drag uses a dedicated gesture-mode lock for reliable camera tilt
+- pinch zoom and two-finger rotation remain available
 
-### Stage 1 review gate
+### Review gate
 
-Stage 1 is not complete yet.
-
-Review specifically:
-- does the terrain finally feel dramatic and worth fighting over?
-- are plateau / ridge / basin / pass differences immediately visible?
-- do trees read as tiny terrain detail instead of giant props?
-- does two-finger rotation follow the fingers?
-- does two-finger vertical drag reliably change the viewing angle?
-- does pinch zoom still feel correct?
-- is mobile performance acceptable?
+Stage 1 remains open until real-device review confirms:
+- rivers feel naturally winding
+- large mountains read as smooth landforms instead of glitched triangles
+- two-finger up/down drag reliably changes camera angle
+- pinch and rotation still behave correctly
+- mobile performance remains acceptable
