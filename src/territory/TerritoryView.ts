@@ -217,9 +217,7 @@ export function createTerritoryView(
         pushPolylineSegments(
           borderPositions,
           borderColors,
-          edge.points.filter(
-            (point): point is Point2 => point !== undefined,
-          ),
+          compactPoints(edge.points),
           BORDER_Y,
           borderColor,
         );
@@ -477,6 +475,18 @@ function pushPolygonFill(
       colors.push(color.r, color.g, color.b);
     }
   }
+}
+
+function compactPoints(
+  points: readonly (Point2 | undefined)[],
+): Point2[] {
+  const result: Point2[] = [];
+
+  for (const point of points) {
+    if (point) result.push(point);
+  }
+
+  return result;
 }
 
 function pushPolylineSegments(
