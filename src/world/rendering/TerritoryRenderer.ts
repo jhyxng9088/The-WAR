@@ -19,7 +19,7 @@ function addTerrainTint(scene: THREE.Scene, territory: StrategicTerritory): void
     new THREE.MeshBasicMaterial({
       color: territory.color,
       transparent: true,
-      opacity: 0.105,
+      opacity: 0.075,
       depthWrite: false,
       polygonOffset: true,
       polygonOffsetFactor: -1,
@@ -98,7 +98,7 @@ function sampleBorder(polygon: readonly XZ[]): XZ[] {
 function addBorder(scene: THREE.Scene, color: number, borderPoints: readonly XZ[]): void {
   const samples: RibbonSample[] = borderPoints.map(([x, z]) => ({
     position: new THREE.Vector3(x, terrainHeight(x, z) + 0.095, z),
-    width: 0.18,
+    width: 0.11,
   }));
   const first = samples[0];
   if (!first) return;
@@ -109,7 +109,7 @@ function addBorder(scene: THREE.Scene, color: number, borderPoints: readonly XZ[
     new THREE.MeshBasicMaterial({
       color,
       transparent: true,
-      opacity: 0.86,
+      opacity: 0.58,
       depthWrite: false,
     }),
   );
