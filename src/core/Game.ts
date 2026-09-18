@@ -27,12 +27,15 @@ export class Game {
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.02;
+    this.renderer.toneMappingExposure = 1.08;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    this.scene.background = new THREE.Color(0x35494f);
-    this.scene.fog = new THREE.Fog(0x35494f, 250, 620);
+    // The visual target is a bright, readable tabletop continent rather than a
+    // dark photo-real terrain demo. Keep the sky and distance haze close to the
+    // ocean palette so the world reads as one coherent miniature.
+    this.scene.background = new THREE.Color(0x9bcddd);
+    this.scene.fog = new THREE.Fog(0x9bcddd, 760, 1900);
 
     this.camera = new WorldCamera();
     this.input = new WorldInput(canvas, this.camera);
