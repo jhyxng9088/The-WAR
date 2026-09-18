@@ -7,6 +7,8 @@ import {
   MeshBasicMaterial,
   MeshStandardMaterial,
   Scene,
+  ShapeUtils,
+  Vector2,
 } from "three";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
@@ -33,6 +35,7 @@ const CORE_Y = 0.13;
 const BORDER_Y = 0.23;
 const SELECTION_Y = 0.27;
 const EXPANSION_Y = 0.32;
+const BORDER_SOFTEN_STRENGTH = 0.14;
 
 const WHITE = new Color(0xffffff);
 const MAP_INK = new Color(0x334139);
@@ -151,6 +154,7 @@ export function createTerritoryView(
   let lastVersion = -1;
   let lastSelectedId: number | null = null;
   let lastExpansionId: number | null = null;
+  const nationLoops = new Map<NationId, Point2[][]>();
 
   const rebuildOwnership = (): void => {
     const tintPositions: number[] = [];
@@ -160,80 +164,58 @@ export function createTerritoryView(
     const borderPositions: number[] = [];
     const borderColors: number[] = [];
 
+    nationLoops.clear();
+
+    for (const nation of state.nations) {
+      const rawLoops = collectNationBoundaryLoops(state, nation.id);
+      const softenedLoops = rawLoops.map((loop) =>
+        softenClosedLoop(loop, BORDER_SOFTEN_STRENGTH),
+      );
+      nationLoops.set(nation.id, softenedLoops);
+
+      const nationColor = new Color(nation.color);
+
+      for (const loop of softenedLoops) {
+        pushTriangulatedLoopFill(
+          tintPositions,
+          tintColors,
+          loop,
+          TINT_Y,
+          nationColor,
+        );
+
+        pushClosedLoopSegments(
+          borderPositions,
+          borderColors,
+          loop,
+          BORDER_Y,
+          nationColor.clone().lerp(MAP_INK, 0.46),
+        );
+      }
+    }
+
+    // Keep the subtle core shading cell-derived. It is an internal color
+    // modulation only and never becomes a second ownership source.
     for (const cell of state.cells) {
       if (!cell.owner) continue;
-
-      const polygon = state.cellPolygon(cell);
-      const nationColor = new Color(state.nation(cell.owner).color);
-
-      pushPolygonFill(
-        tintPositions,
-        tintColors,
-        polygon,
-        TINT_Y,
-        nationColor,
-      );
 
       const sameOwnerNeighbors = state.neighbors(cell).filter(
         (neighbor) => neighbor.owner === cell.owner,
       ).length;
 
-      if (sameOwnerNeighbors >= 3) {
-        const coreColor = nationColor
-          .clone()
-          .lerp(MAP_INK, 0.08);
+      if (sameOwnerNeighbors < 3) continue;
 
-        pushPolygonFill(
-          corePositions,
-          coreColors,
-          polygon,
-          CORE_Y,
-          coreColor,
-        );
-      }
+      const coreColor = new Color(
+        state.nation(cell.owner).color,
+      ).lerp(MAP_INK, 0.08);
 
-      const neighbors = [
-        {
-          neighbor: state.cellAt(cell.col, cell.row - 1),
-          points: polygon.slice(0, 3),
-        },
-        {
-          neighbor: state.cellAt(cell.col + 1, cell.row),
-          points: polygon.slice(2, 5),
-        },
-        {
-          neighbor: state.cellAt(cell.col, cell.row + 1),
-          points: polygon.slice(4, 7),
-        },
-        {
-          neighbor: state.cellAt(cell.col - 1, cell.row),
-          points: [polygon[6], polygon[7], polygon[0]],
-        },
-      ] as const;
-
-      for (const edge of neighbors) {
-        if (edge.neighbor?.owner === cell.owner) continue;
-
-        if (
-          edge.neighbor?.owner &&
-          nationIndex(cell.owner) >
-            nationIndex(edge.neighbor.owner)
-        ) {
-          continue;
-        }
-
-        const borderColor = edge.neighbor?.owner
-          ? SHARED_BORDER
-          : nationColor.clone().lerp(MAP_INK, 0.46);
-
-        pushPolylineSegments(
-          borderPositions,
-          borderColors,
-          compactPoints(edge.points),
-          BORDER_Y,
-          borderColor,
-        );
-      }
+      pushPolygonFill(
+        corePositions,
+        coreColors,
+        state.cellPolygon(cell),
+        CORE_Y,
+        coreColor,
+      );
     }
 
     const nextTintGeometry = buildColoredGeometry(
@@ -302,13 +284,13 @@ export function createTerritoryView(
       state.nation(cell.owner).color,
     ).lerp(WHITE, 0.15);
 
-    for (const ownedCell of state.cells) {
-      if (ownedCell.owner !== cell.owner) continue;
+    const loops = nationLoops.get(cell.owner) ?? [];
 
-      pushPolygonFill(
+    for (const loop of loops) {
+      pushTriangulatedLoopFill(
         positions,
         colors,
-        state.cellPolygon(ownedCell),
+        loop,
         SELECTION_Y,
         selectedColor,
       );
@@ -492,6 +474,255 @@ function pushPolygonFill(
       colors.push(color.r, color.g, color.b);
     }
   }
+}
+
+interface BoundarySegment {
+  readonly startKey: string;
+  readonly endKey: string;
+  readonly points: readonly Point2[];
+}
+
+function collectNationBoundaryLoops(
+  state: TerritoryState,
+  nationId: NationId,
+): Point2[][] {
+  const segments: BoundarySegment[] = [];
+
+  for (const cell of state.cells) {
+    if (cell.owner !== nationId) continue;
+
+    const polygon = state.cellPolygon(cell);
+    const edges = [
+      {
+        neighbor: state.cellAt(cell.col, cell.row - 1),
+        points: polygon.slice(0, 3),
+      },
+      {
+        neighbor: state.cellAt(cell.col + 1, cell.row),
+        points: polygon.slice(2, 5),
+      },
+      {
+        neighbor: state.cellAt(cell.col, cell.row + 1),
+        points: polygon.slice(4, 7),
+      },
+      {
+        neighbor: state.cellAt(cell.col - 1, cell.row),
+        points: [polygon[6], polygon[7], polygon[0]],
+      },
+    ] as const;
+
+    for (const edge of edges) {
+      if (edge.neighbor?.owner === nationId) continue;
+
+      const points = compactPoints(edge.points);
+      const first = points[0];
+      const last = points[points.length - 1];
+      if (!first || !last) continue;
+
+      segments.push({
+        startKey: pointKey(first),
+        endKey: pointKey(last),
+        points,
+      });
+    }
+  }
+
+  const starts = new Map<string, number[]>();
+
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    if (!segment) continue;
+
+    const bucket = starts.get(segment.startKey) ?? [];
+    bucket.push(index);
+    starts.set(segment.startKey, bucket);
+  }
+
+  const used = new Set<number>();
+  const loops: Point2[][] = [];
+
+  for (let seedIndex = 0; seedIndex < segments.length; seedIndex += 1) {
+    if (used.has(seedIndex)) continue;
+
+    const seed = segments[seedIndex];
+    if (!seed) continue;
+
+    used.add(seedIndex);
+    const loop = [...seed.points];
+    const startKey = seed.startKey;
+    let endKey = seed.endKey;
+    let guard = 0;
+
+    while (endKey !== startKey && guard < segments.length + 4) {
+      const candidates = starts.get(endKey) ?? [];
+      const nextIndex = candidates.find((index) => !used.has(index));
+
+      if (nextIndex === undefined) break;
+
+      const next = segments[nextIndex];
+      if (!next) break;
+
+      used.add(nextIndex);
+      loop.push(...next.points.slice(1));
+      endKey = next.endKey;
+      guard += 1;
+    }
+
+    if (endKey === startKey && loop.length >= 6) {
+      if (samePoint(loop[0], loop[loop.length - 1])) {
+        loop.pop();
+      }
+      loops.push(removeNearDuplicates(loop));
+    }
+  }
+
+  return loops;
+}
+
+function softenClosedLoop(
+  points: readonly Point2[],
+  strength: number,
+): Point2[] {
+  if (points.length < 5) return [...points];
+
+  return points.map((point, index) => {
+    const previous =
+      points[(index - 1 + points.length) % points.length];
+    const next = points[(index + 1) % points.length];
+
+    if (!previous || !next) return point;
+
+    const averageX = (previous.x + point.x + next.x) / 3;
+    const averageZ = (previous.z + point.z + next.z) / 3;
+
+    return {
+      x: point.x + (averageX - point.x) * strength,
+      z: point.z + (averageZ - point.z) * strength,
+    };
+  });
+}
+
+function pushTriangulatedLoopFill(
+  positions: number[],
+  colors: number[],
+  loop: readonly Point2[],
+  y: number,
+  color: Color,
+): void {
+  if (loop.length < 3) return;
+
+  const contour = loop.map(
+    (point) => new Vector2(point.x, point.z),
+  );
+  const triangles = ShapeUtils.triangulateShape(contour, []);
+
+  for (const triangle of triangles) {
+    const aIndex = triangle[0];
+    const bIndex = triangle[1];
+    const cIndex = triangle[2];
+
+    if (
+      aIndex === undefined ||
+      bIndex === undefined ||
+      cIndex === undefined
+    ) {
+      continue;
+    }
+
+    const a = loop[aIndex];
+    const b = loop[bIndex];
+    const c = loop[cIndex];
+    if (!a || !b || !c) continue;
+
+    pushUpFacingTriangle(
+      positions,
+      colors,
+      a,
+      b,
+      c,
+      y,
+      color,
+    );
+  }
+}
+
+function pushUpFacingTriangle(
+  positions: number[],
+  colors: number[],
+  a: Point2,
+  b: Point2,
+  c: Point2,
+  y: number,
+  color: Color,
+): void {
+  const normalY =
+    (b.z - a.z) * (c.x - a.x) -
+    (b.x - a.x) * (c.z - a.z);
+
+  const second = normalY >= 0 ? b : c;
+  const third = normalY >= 0 ? c : b;
+
+  positions.push(
+    a.x, y, a.z,
+    second.x, y, second.z,
+    third.x, y, third.z,
+  );
+
+  for (let vertex = 0; vertex < 3; vertex += 1) {
+    colors.push(color.r, color.g, color.b);
+  }
+}
+
+function pushClosedLoopSegments(
+  positions: number[],
+  colors: number[],
+  loop: readonly Point2[],
+  y: number,
+  color: Color,
+): void {
+  for (let index = 0; index < loop.length; index += 1) {
+    const a = loop[index];
+    const b = loop[(index + 1) % loop.length];
+    if (!a || !b) continue;
+
+    positions.push(
+      a.x, y, a.z,
+      b.x, y, b.z,
+    );
+    colors.push(
+      color.r, color.g, color.b,
+      color.r, color.g, color.b,
+    );
+  }
+}
+
+function removeNearDuplicates(points: readonly Point2[]): Point2[] {
+  const result: Point2[] = [];
+
+  for (const point of points) {
+    const previous = result[result.length - 1];
+
+    if (!previous || !samePoint(previous, point)) {
+      result.push(point);
+    }
+  }
+
+  return result;
+}
+
+function pointKey(point: Point2): string {
+  return point.x.toFixed(4) + ":" + point.z.toFixed(4);
+}
+
+function samePoint(
+  a: Point2 | undefined,
+  b: Point2 | undefined,
+): boolean {
+  if (!a || !b) return false;
+  return (
+    Math.abs(a.x - b.x) < 0.0001 &&
+    Math.abs(a.z - b.z) < 0.0001
+  );
 }
 
 function compactPoints(

@@ -6,6 +6,10 @@ import {
   type NationDefinition,
   type NationId,
 } from "./NationCatalog";
+import {
+  RegionIndex,
+  type RegionDefinition,
+} from "./RegionIndex";
 
 export interface TerritoryCell {
   readonly id: number;
@@ -18,6 +22,14 @@ export interface ExpansionState {
   readonly targetId: number;
   elapsed: number;
   readonly duration: number;
+}
+
+export interface RegionControlSummary {
+  readonly region: RegionDefinition;
+  readonly leadingNation: NationId | null;
+  readonly leadingShare: number;
+  readonly neutralCells: number;
+  readonly contested: boolean;
 }
 
 export const TERRITORY_COLS = 80;
@@ -40,6 +52,10 @@ export class TerritoryState {
   public readonly nations = NATIONS;
   public readonly playerNation: NationId = PLAYER_NATION_ID;
   public readonly capitalCellIds = new Map<NationId, number>();
+  public readonly regionIndex = new RegionIndex(
+    TERRITORY_COLS,
+    TERRITORY_ROWS,
+  );
 
   public selectedCellId: number | null = null;
   public expansion: ExpansionState | null = null;
@@ -285,6 +301,56 @@ export class TerritoryState {
   public isCapital(cell: TerritoryCell): boolean {
     if (!cell.owner) return false;
     return this.capitalCellIds.get(cell.owner) === cell.id;
+  }
+
+  public regionForCell(cell: TerritoryCell): RegionDefinition {
+    return this.regionIndex.regionForCell(cell);
+  }
+
+  public regionControl(regionId: number): RegionControlSummary {
+    const region = this.regionIndex.regionById(regionId);
+    const counts = new Map<NationId, number>();
+    let neutralCells = 0;
+
+    for (const cellId of region.cellIds) {
+      const cell = this.cells[cellId];
+
+      if (!cell?.owner) {
+        neutralCells += 1;
+        continue;
+      }
+
+      counts.set(
+        cell.owner,
+        (counts.get(cell.owner) ?? 0) + 1,
+      );
+    }
+
+    let leadingNation: NationId | null = null;
+    let leadingCount = 0;
+    let secondCount = 0;
+
+    for (const [nationId, count] of counts) {
+      if (count > leadingCount) {
+        secondCount = leadingCount;
+        leadingCount = count;
+        leadingNation = nationId;
+      } else if (count > secondCount) {
+        secondCount = count;
+      }
+    }
+
+    return {
+      region,
+      leadingNation,
+      leadingShare: leadingCount / region.cellIds.length,
+      neutralCells,
+      contested:
+        leadingCount > 0 &&
+        secondCount > 0 &&
+        leadingCount - secondCount <=
+          Math.max(2, region.cellIds.length * 0.12),
+    };
   }
 
   private updatePlayerExpansion(deltaSeconds: number): boolean {

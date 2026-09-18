@@ -6,59 +6,69 @@ Updated: 2026-09-19
 
 **Stage 2 — Territory expansion — IN PROGRESS**
 
-## Stage 2-F active slice
+## Stage 2-F finishing — restrained border softening
 
-Real-device review exposed that nation fill geometry existed but was not visible from the strategy camera because the generated triangles were wound toward -Y and were backface-culled.
+Implemented:
+- simulation cells and ownership rules are unchanged
+- nation boundary loops are derived from canonical owned cells
+- only the visual nation outline receives one mild smoothing pass
+- smoothing strength is intentionally limited to 0.14
+- translucent nation fill now follows the same softened outer loop
+- whole-nation selection uses the same softened shape
+- active claim target remains the exact hidden cell so command feedback stays precise
+- no additional render loop, state owner, listener, or patch file was introduced
 
-Fixed in this pass:
-- canonical polygon fill triangulation now faces +Y
-- nation interiors are visibly tinted with translucent nation color
-- base nation tint is intentionally restrained so the ground remains visible
-- compact national cores receive only a subtle extra tint
-- national borders are slightly thinner and less dominant
-- selecting a nation uses a subtle whole-nation translucent highlight
-- active expansion target uses a stronger translucent target fill
-- vector border rendering from Stage 2-D remains unchanged
-- compact AI growth from Stage 2-E remains unchanged
+The goal is not a round blob. The goal is to remove the last obvious polygon-step feeling while preserving the current irregular strategic-map character.
 
-## Visual target
+## Stage 2-G — Region hierarchy foundation
 
-The map should read in this order:
-1. colored national land mass
-2. national border
-3. capital marker
-4. selection / active expansion feedback
+Implemented immediately after 2-F:
+- hidden territory cells are grouped into 10 × 8 = 80 meso-scale Regions
+- each Region contains 8 × 7 hidden cells
+- Region topology has one canonical owner: `RegionIndex`
+- dynamic Region control is derived live from `TerritoryState`; Region code stores no second ownership map
+- Region control summary exposes leading nation, leading share, neutral cell count, and contested state
+- selecting land shows its Region label in the HUD
+- existing player expansion, rival expansion, capitals, camera, gestures, and HUD structure are preserved
 
-The internal cell topology must remain visually hidden except for the temporary active claim target.
+This Region layer is infrastructure for later:
+- population
+- resources
+- taxation
+- stability / public support
+- defense
+- supply
+- occupation pressure
+
+Those systems are **not** added yet.
 
 ## Canonical ownership
 
-Unchanged:
-- TerritoryState owns ownership, adjacency, expansion rules, AI and hit testing
-- TerritoryView derives all territory visuals
-- TerritoryHud owns territory UI
-- AppRuntime only wires systems together
-- MapGestureController owns pointer gestures
-- StrategyCameraRig owns camera response
-- GameLoop remains the single frame loop
-
-No patch file, duplicate state, duplicate render owner, fake click, extra listener owner, or DOM gameplay workaround was introduced.
+- TerritoryState: dynamic ownership, adjacency, expansion, AI, hit testing, Region control derivation
+- RegionIndex: static cell → Region topology only
+- TerritoryView: derived visuals and visual smoothing only
+- TerritoryHud: UI only
+- AppRuntime: orchestration only
+- MapGestureController: pointer gestures
+- StrategyCameraRig: camera response
+- GameLoop: single frame loop
 
 ## Stage 2 next work
 
-After this fill is visually confirmed:
-- introduce Region grouping above hidden cells
-- define expansion pressure/cost
-- refine expansion command UX
+After device review:
+- tune the 0.14 border softening only if it is still visibly too angular or too soft
+- define expansion pressure / cost
+- refine final expansion command UX
 - finish Stage 2 territory rules before Stage 3 resources
 
 ## Review gate
 
 Confirm on device:
-- every country has a clearly visible but translucent interior color
-- underlying ground is still visible through national color
-- border is secondary to the colored land mass
-- whole-nation selection feels subtle
-- expansion target is visible without exposing the general grid
-- camera movement does not flicker
-- player and rival expansion behavior is unchanged
+- nation boundaries are only slightly softer, not rounded into blobs
+- translucent fill still aligns with the visible border
+- national border remains stable during pan / zoom / rotation
+- selecting land shows a Region label without exposing the hidden cell grid
+- player expansion is unchanged
+- rival expansion is unchanged
+- camera and gesture behavior are unchanged
+- mobile performance remains acceptable

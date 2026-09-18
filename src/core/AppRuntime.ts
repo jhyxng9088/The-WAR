@@ -54,7 +54,7 @@ export class AppRuntime {
       "STAGE 2 · TERRITORY",
     );
     this.diagnostics.setContext(
-      "Stage 2-F · translucent nation fill · stable map readability",
+      "Stage 2-G · softened borders · Region hierarchy",
     );
 
     this.viewport = new ViewportController(

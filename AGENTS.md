@@ -23,6 +23,14 @@ Until the core solo game loop is proven fun:
 
 This override does **not** authorize deleting gameplay/terrain abstraction boundaries.
 
+## 0.2 Territory / Region ownership hard lock
+
+- `TerritoryState` is the only owner of dynamic cell ownership, adjacency, expansion rules, AI expansion, and territory hit testing.
+- `RegionIndex` owns only the static mapping from hidden territory cells to meso-scale Regions.
+- Region control / contested state must be derived from `TerritoryState` ownership; never store a second mutable owner map in Region code.
+- `TerritoryView` may cache derived visual loops, but render geometry is never gameplay truth.
+- Smoothing is visual-only. It must never change cell adjacency, ownership, expansion legality, or AI decisions.
+
 THE WAR is a top-down territory-expansion war strategy game made primarily for friends to play together.
 
 The core fantasy is not "simulate a country in maximum detail." It is:
