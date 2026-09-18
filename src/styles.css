@@ -1,0 +1,99 @@
+:root {
+  color-scheme: dark;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+  background: #172126;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+* { box-sizing: border-box; }
+html, body, #app { width: 100%; height: 100%; margin: 0; }
+html, body {
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: #172126;
+}
+body {
+  position: fixed;
+  inset: 0;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+button, canvas { -webkit-tap-highlight-color: transparent; }
+#app {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: var(--app-height, 100dvh);
+  overflow: hidden;
+}
+.app-shell, .game-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.game-viewport {
+  touch-action: none;
+  overscroll-behavior: none;
+  background: #172126;
+}
+.game-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  outline: none;
+  touch-action: none;
+  cursor: grab;
+}
+.game-canvas:active { cursor: grabbing; }
+.foundation-badge {
+  position: absolute;
+  z-index: 10;
+  top: 0;
+  left: 0;
+  margin: calc(env(safe-area-inset-top) + 12px) 0 0 calc(env(safe-area-inset-left) + 12px);
+  padding: 9px 11px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 12px;
+  background: rgb(13 19 22 / 72%);
+  backdrop-filter: blur(12px);
+  color: rgb(244 247 242 / 92%);
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: none;
+}
+.foundation-badge strong {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 12px;
+  letter-spacing: .04em;
+}
+.foundation-badge [data-role="metrics"] { color: rgb(217 226 211 / 70%); }
+.gesture-hint {
+  position: absolute;
+  z-index: 10;
+  left: 50%;
+  bottom: 0;
+  max-width: min(680px, calc(100vw - 32px));
+  margin-bottom: calc(env(safe-area-inset-bottom) + 12px);
+  padding: 8px 12px;
+  transform: translateX(-50%);
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 999px;
+  background: rgb(13 19 22 / 64%);
+  color: rgb(236 241 232 / 72%);
+  font-size: 11px;
+  text-align: center;
+  white-space: nowrap;
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+}
+@media (max-width: 720px) {
+  .gesture-hint {
+    max-width: calc(100vw - 24px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}

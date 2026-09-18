@@ -208,6 +208,77 @@ Rules:
 - keep DPR / renderer resolution under control on mobile
 
 
+
+## 1.13 World scale and prop scale — hard lock
+
+The world must read as a **continent-scale strategic space**, never as a tiny walkable diorama.
+
+Hard rules:
+- terrain mass is always the visual scale reference
+- several mountain chains, river systems, plains, forests, and settlement regions must fit inside one continent
+- a capital, fort, village, house, tree, rock, farm, or army marker is small relative to the land
+- individual houses and trees may become sub-pixel or disappear entirely at strategic zoom
+- use LOD / symbolic markers instead of making props physically huge just to keep them visible
+- never scale a tree or building up until it competes visually with a mountain, valley, or regional landform
+- zoomed-out screenshots should feel like looking over a large country or continent, not a park-sized model
+- traversal, expansion, logistics, and war should later make the map feel large in gameplay as well as visually
+
+Stage 1 must include explicit scale-reference tests before art detail is added.
+
+## 1.14 Strategic landform vocabulary — hard lock
+
+The terrain must not be a flat plain with random mountains sprinkled on top.
+
+Stage 1 world generation should deliberately combine large landforms such as:
+- uplifted plateaus / raised blocks
+- broad ridges and connected mountain chains
+- foothills
+- escarpments
+- basins
+- river valleys
+- wide lowlands
+- passes and saddles
+- coastal plains
+- peninsulas and bays
+- elevated interior plains
+
+The purpose is strategic variety, not geology simulation.
+
+The map must create several different kinds of valuable positions:
+- defensible elevated regions
+- fertile lowlands
+- river crossings
+- mountain passes
+- resource-rich uplands
+- coastal access
+- interior routes
+
+Do not put all advantages in the center or let one dominant ridge decide the entire map.
+
+## 1.15 Apple Maps gesture contract — hard lock
+
+Touch navigation should intentionally imitate the mental model of Apple Maps.
+
+Mobile gesture contract:
+- one-finger drag → pan the map
+- pinch open / closed → zoom around the gesture midpoint
+- two-finger rotation → rotate the map
+- two-finger parallel drag up / down → lower or raise the viewing angle
+- double-tap, then keep the finger down and drag vertically → one-finger zoom
+- simple tap remains available for selection and game commands
+
+Rules:
+- gestures belong to one canonical input owner
+- camera code consumes gesture intent; input code never owns world state
+- no duplicated touch listeners in feature modules
+- native page scrolling / browser rubber-banding must not fight the map viewport
+- gestures should remain continuous when transitioning between pan, pinch, rotate, and tilt
+- avoid sudden camera jumps when the second finger enters or leaves
+- desktop mouse / wheel controls may mirror the same camera intents without changing the mobile contract
+
+Rotation and tilt are navigation features, not permission to use a low cinematic camera.
+The strategic camera still obeys the high 2.5D readability rule.
+
 ## 1.12 Deployment
 
 Production deployment rule:
@@ -337,12 +408,13 @@ Build:
 - continent-scale landmass
 - height field
 - plains / hills / mountains
-- rivers
+- uplifted plateaus / ridges / basins / passes / escarpments
+- rivers and river valleys
 - coast
 - grouped forests
 - simple water
 - high 2.5D strategy camera
-- pan / pinch / wheel zoom
+- Apple Maps-style pan / pinch zoom / two-finger rotate / two-finger tilt / double-tap-drag zoom
 - lightweight lighting
 - minimal settlement markers for scale testing
 
@@ -352,6 +424,7 @@ Map design requirements:
 - no single central super-region
 - enough open land for expansion
 - visible strategic geography at zoom-out
+- continent-scale visual proportions: terrain huge, settlements / trees / forts deliberately small
 
 Success gate:
 
