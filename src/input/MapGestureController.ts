@@ -33,6 +33,8 @@ interface MultiGestureState {
   secondY: number;
 }
 
+type MultiGestureMode = "undecided" | "tilt" | "transform";
+
 const DOUBLE_TAP_MS = 320;
 const DOUBLE_TAP_DISTANCE = 30;
 const PAN_THRESHOLD = 4;
@@ -42,6 +44,8 @@ export class MapGestureController {
   private readonly pointers = new Map<number, PointerPoint>();
   private single: SingleGestureState | null = null;
   private multi: MultiGestureState | null = null;
+  private multiOrigin: MultiGestureState | null = null;
+  private multiMode: MultiGestureMode = "undecided";
   private lastTapTime = -Infinity;
   private lastTapX = 0;
   private lastTapY = 0;
@@ -87,6 +91,8 @@ export class MapGestureController {
     this.pointers.clear();
     this.single = null;
     this.multi = null;
+    this.multiOrigin = null;
+    this.multiMode = "undecided";
   }
 
   private readonly onPointerDown = (event: PointerEvent): void => {
@@ -122,6 +128,8 @@ export class MapGestureController {
     if (this.pointers.size === 2) {
       this.single = null;
       this.multi = this.readMultiState();
+      this.multiOrigin = this.multi;
+      this.multiMode = "undecided";
     }
   };
 
@@ -178,9 +186,10 @@ export class MapGestureController {
 
   private handleMultiMove(): void {
     const previous = this.multi;
+    const origin = this.multiOrigin;
     const current = this.readMultiState();
 
-    if (!previous || !current) {
+    if (!previous || !origin || !current) {
       this.multi = current;
       return;
     }
@@ -189,41 +198,49 @@ export class MapGestureController {
       previous.distance > 0 ? current.distance / previous.distance : 1;
     const angleDelta = normalizeAngle(current.angle - previous.angle);
 
-    const firstDeltaX = current.firstX - previous.firstX;
-    const firstDeltaY = current.firstY - previous.firstY;
-    const secondDeltaX = current.secondX - previous.secondX;
-    const secondDeltaY = current.secondY - previous.secondY;
-    const averageDeltaX = (firstDeltaX + secondDeltaX) * 0.5;
-    const averageDeltaY = (firstDeltaY + secondDeltaY) * 0.5;
-
-    const pinchMagnitude = Math.abs(
-      Math.log(Math.max(distanceScale, 0.0001)),
+    const totalScaleChange = Math.abs(
+      Math.log(Math.max(current.distance / Math.max(origin.distance, 0.0001), 0.0001)),
     );
-    const rotationMagnitude = Math.abs(angleDelta);
+    const totalRotation = Math.abs(
+      normalizeAngle(current.angle - origin.angle),
+    );
+    const totalCenterX = current.centerX - origin.centerX;
+    const totalCenterY = current.centerY - origin.centerY;
 
-    const sameVerticalDirection = firstDeltaY * secondDeltaY > 0;
-    const verticalDominant =
-      Math.abs(averageDeltaY) > Math.abs(averageDeltaX) * 1.12;
-    const verticalMovement = Math.abs(averageDeltaY) > 0.18;
-    const fingersMovingTogether =
-      Math.abs(firstDeltaY - secondDeltaY) <
-      Math.max(3.2, Math.abs(averageDeltaY) * 0.85);
+    if (this.multiMode === "undecided") {
+      const verticalIntent =
+        Math.abs(totalCenterY) > 7 &&
+        Math.abs(totalCenterY) > Math.abs(totalCenterX) * 1.15 &&
+        totalScaleChange < 0.045 &&
+        totalRotation < 0.055;
 
-    const looksLikeTilt =
-      sameVerticalDirection &&
-      verticalDominant &&
-      verticalMovement &&
-      fingersMovingTogether &&
-      pinchMagnitude < 0.03 &&
-      rotationMagnitude < 0.04;
+      const transformIntent =
+        totalScaleChange > 0.035 ||
+        totalRotation > 0.045;
 
-    if (looksLikeTilt) {
-      this.callbacks.tilt(averageDeltaY);
-      this.callbacks.activity(
-        "Apple Maps tilt · 2-finger vertical drag",
+      if (verticalIntent) {
+        this.multiMode = "tilt";
+      } else if (transformIntent) {
+        this.multiMode = "transform";
+      }
+    }
+
+    if (this.multiMode === "tilt") {
+      const deltaY = current.centerY - previous.centerY;
+
+      if (Math.abs(deltaY) > 0.05) {
+        this.callbacks.tilt(deltaY);
+        this.callbacks.activity(
+          "Apple Maps tilt · 2-finger vertical drag",
+        );
+      }
+    } else if (this.multiMode === "transform") {
+      const pinchMagnitude = Math.abs(
+        Math.log(Math.max(distanceScale, 0.0001)),
       );
-    } else {
-      if (pinchMagnitude > 0.0025) {
+      const rotationMagnitude = Math.abs(angleDelta);
+
+      if (pinchMagnitude > 0.0015) {
         this.callbacks.zoom(
           distanceScale,
           current.centerX,
@@ -233,7 +250,7 @@ export class MapGestureController {
         this.callbacks.activity("Apple Maps zoom · pinch");
       }
 
-      if (rotationMagnitude > 0.0025) {
+      if (rotationMagnitude > 0.0015) {
         this.callbacks.rotate(angleDelta);
         this.callbacks.activity("Apple Maps rotate · 2 fingers");
       }
@@ -290,6 +307,8 @@ export class MapGestureController {
     if (this.pointers.size === 0) {
       this.single = null;
       this.multi = null;
+      this.multiOrigin = null;
+      this.multiMode = "undecided";
       return;
     }
 
@@ -311,6 +330,8 @@ export class MapGestureController {
         quickZoom: false,
       };
       this.multi = null;
+      this.multiOrigin = null;
+      this.multiMode = "undecided";
     }
   }
 
