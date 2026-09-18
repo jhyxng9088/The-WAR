@@ -6,58 +6,69 @@ Updated: 2026-09-19
 
 **Stage 2 — Territory expansion — IN PROGRESS**
 
-## Stage 2-H — visible border polish + Region readout
+## Stage 2-I — Claim Operations + Frontier Capacity
 
-This pass responds to device review that the previous 0.14 averaging pass was technically present but visually too subtle.
+This pass makes territory expansion visibly and mechanically different from the old one-cell-at-a-time prototype.
 
-### Border / territory presentation
+### Player expansion
 
-- simulation cells remain unchanged and hidden
-- national outer loops are still derived from canonical TerritoryState ownership
-- the old single-point average softening is replaced with one restrained corner-cut pass
-- corner cut is 0.18: enough to visibly reduce hard stair-step corners without turning states into round blobs
-- loop area is compensated after rounding so countries do not visibly shrink
-- translucent national fill, whole-nation selection and border all use the same display loop
-- a wider very-low-opacity border underlay sits below the crisp 1 px line to remove the harsh cut-out / sticker feeling
-- no texture rasterization is reintroduced, so borders remain resolution-independent
+- tapping a legal neutral frontier now builds one Claim Operation
+- an operation can include up to 4 connected neutral hidden cells
+- operation growth stays inside the clicked Region
+- cells are chosen from the clicked frontier outward and remain connected to player territory / the operation
+- operation duration scales slightly with operation size
+- the active operation highlights all cells being claimed, not just one hidden cell
 
-### Region layer
+### Frontier Capacity
 
-- RegionIndex remains the only static cell → Region topology owner
-- Region control remains derived from TerritoryState ownership
-- HUD now shows Region label, leading nation, leading share, and contested status when land is selected
-- no second mutable Region ownership state exists
+- player has one canonical Frontier Capacity value in TerritoryState
+- maximum: 100
+- it regenerates continuously
+- starting a Claim Operation consumes capacity
+- larger operations cost slightly more
+- if capacity is insufficient, the claim does not start
+- HUD shows current capacity percentage
 
-## Canonical ownership
+This is intentionally not Food / Gold / Material. Stage 3 resources are still separate.
+
+### Region Secure
+
+- after a claim completes, Region control is checked
+- if one nation owns at least 82% of a Region
+- and the rest of that Region is neutral
+- and there is no foreign ownership inside it
+- remaining neutral cells are consolidated into that nation
+- foreign territory is never overwritten by Region Secure
+- rival AI uses the same neutral-only Region Secure rule after normal AI expansion
+
+### Canonical ownership
 
 Unchanged:
-- TerritoryState: dynamic ownership, adjacency, expansion, AI, hit testing, Region control derivation
-- RegionIndex: static Region topology only
-- TerritoryView: derived visual boundary / fill only
-- TerritoryHud: UI only
-- AppRuntime: orchestration only
-- MapGestureController: pointer gestures
-- StrategyCameraRig: camera response
-- GameLoop: single frame loop
+- TerritoryState owns dynamic ownership, adjacency, claim legality, Frontier Capacity, operations, AI, hit testing and Region-control derivation
+- RegionIndex owns static cell → Region topology only
+- TerritoryView renders derived territory / active operation visuals only
+- TerritoryHud displays derived UI only
+- AppRuntime orchestrates
+- GameLoop remains the only frame loop
+- camera / gesture owners are unchanged
 
-No patch file, fake click, duplicate state owner, duplicate input listener, duplicate timer, or second render loop was added.
+No patch file, fake click, duplicate state owner, duplicate listener, duplicate timer, or second game loop was added.
 
 ## Stage 2 next work
 
-After device review:
-- tune corner cut only if it is still too angular or has become too soft
-- define expansion pressure / cost
-- refine final expansion command UX
-- then close Stage 2 and move into Stage 3 resources / population
+- device-test Claim Operation rhythm and capacity recovery
+- tune operation size / cost / Region Secure threshold if necessary
+- refine the command UX if taps still feel too cell-like
+- then close Stage 2 and move to Stage 3 resources / population
 
 ## Review gate
 
 Confirm:
-- border shape is visibly smoother than Stage 2-G
-- states still retain irregular strategic silhouettes
-- translucent fill exactly follows the visible outline
-- border remains crisp while zooming / rotating / panning
-- Region readout updates correctly on selection
-- player and rival expansion behavior is unchanged
-- camera / gesture behavior is unchanged
-- phone performance remains acceptable
+- one tap visibly claims a small connected frontier section instead of only one tiny cell
+- active claim highlight matches every cell in the operation
+- capacity decreases and regenerates
+- low capacity blocks spam expansion
+- Region Secure never steals foreign land
+- rival nations still expand
+- borders / translucent fill remain correct
+- camera / gestures / HUD remain stable

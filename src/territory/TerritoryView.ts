@@ -171,7 +171,7 @@ export function createTerritoryView(
 
   let lastVersion = -1;
   let lastSelectedId: number | null = null;
-  let lastExpansionId: number | null = null;
+  let lastExpansionKey = "";
   const nationLoops = new Map<NationId, Point2[][]>();
 
   const rebuildOwnership = (): void => {
@@ -341,12 +341,14 @@ export function createTerritoryView(
     scene.add(selectionMesh);
   };
 
-  const rebuildExpansion = (cell: TerritoryCell | null): void => {
+  const rebuildExpansion = (
+    cells: readonly TerritoryCell[],
+  ): void => {
     scene.remove(expansionMesh);
     expansionGeometry.dispose();
     expansionGeometry = new BufferGeometry();
 
-    if (!cell) {
+    if (cells.length === 0) {
       expansionMesh = new Mesh(
         expansionGeometry,
         expansionMaterial,
@@ -360,13 +362,15 @@ export function createTerritoryView(
     const colors: number[] = [];
     const color = new Color(0xffefae);
 
-    pushPolygonFill(
-      positions,
-      colors,
-      state.cellPolygon(cell),
-      EXPANSION_Y,
-      color,
-    );
+    for (const cell of cells) {
+      pushPolygonFill(
+        positions,
+        colors,
+        state.cellPolygon(cell),
+        EXPANSION_Y,
+        color,
+      );
+    }
 
     expansionGeometry.setAttribute(
       "position",
@@ -398,10 +402,12 @@ export function createTerritoryView(
       rebuildSelection(current.selectedCell());
     }
 
-    const expansionId = current.expansion?.targetId ?? null;
-    if (lastExpansionId !== expansionId) {
-      lastExpansionId = expansionId;
-      rebuildExpansion(current.expansionCell());
+    const expansionKey =
+      current.expansion?.targetIds.join(",") ?? "";
+
+    if (lastExpansionKey !== expansionKey) {
+      lastExpansionKey = expansionKey;
+      rebuildExpansion(current.expansionCells());
     }
 
     if (current.expansion) {

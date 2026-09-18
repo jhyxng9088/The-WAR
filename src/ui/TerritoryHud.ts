@@ -48,8 +48,9 @@ export class TerritoryHud {
     const signature = [
       state.version,
       state.selectedCellId,
-      expansion?.targetId ?? -1,
+      expansion?.targetIds.join(",") ?? "-",
       expansion ? Math.floor(state.expansionProgress() * 20) : -1,
+      Math.floor(state.frontierCapacityPercent() / 2),
     ].join(":");
 
     if (signature === this.lastSignature) return;
@@ -63,7 +64,10 @@ export class TerritoryHud {
     this.statsLine.textContent =
       owned + " territory · " +
       frontier + " frontier options · " +
-      state.nations.length + " nations · rivals are expanding";
+      state.frontierCapacityPercent() +
+      "% capacity · " +
+      state.nations.length +
+      " nations";
 
     if (!selected) {
       this.selectionLine.textContent =
@@ -71,9 +75,15 @@ export class TerritoryHud {
       return;
     }
 
-    if (expansion?.targetId === selected.id) {
+    if (expansion?.targetIds.includes(selected.id)) {
+      const region = state.regionIndex.regionById(expansion.regionId);
+
       this.selectionLine.textContent =
-        "Claiming frontier · " +
+        "Claim operation · Region " +
+        region.label +
+        " · " +
+        expansion.targetIds.length +
+        " cells · " +
         Math.round(state.expansionProgress() * 100) +
         "%";
       return;
