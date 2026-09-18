@@ -23,13 +23,16 @@ export interface ExpansionState {
 export const TERRITORY_COLS = 80;
 export const TERRITORY_ROWS = 56;
 export const TERRITORY_CELL_SIZE = 65;
+export const TERRITORY_GRID_WIDTH =
+  TERRITORY_COLS * TERRITORY_CELL_SIZE;
+export const TERRITORY_GRID_DEPTH =
+  TERRITORY_ROWS * TERRITORY_CELL_SIZE;
 
-const GRID_WIDTH = TERRITORY_COLS * TERRITORY_CELL_SIZE;
-const GRID_DEPTH = TERRITORY_ROWS * TERRITORY_CELL_SIZE;
-const GRID_MIN_X = -GRID_WIDTH / 2;
-const GRID_MIN_Z = -GRID_DEPTH / 2;
-const EXPANSION_DURATION_SECONDS = 1.05;
+const GRID_MIN_X = -TERRITORY_GRID_WIDTH / 2;
+const GRID_MIN_Z = -TERRITORY_GRID_DEPTH / 2;
+const EXPANSION_DURATION_SECONDS = 1.0;
 const INITIAL_RADIUS = 2.55;
+const VISUAL_JITTER = 0.24;
 
 export class TerritoryState {
   public readonly cells: TerritoryCell[] = [];
@@ -40,6 +43,9 @@ export class TerritoryState {
   public selectedCellId: number | null = null;
   public expansion: ExpansionState | null = null;
   public version = 0;
+
+  private readonly aiElapsed = new Map<NationId, number>();
+  private readonly aiIntervals = new Map<NationId, number>();
 
   public constructor() {
     for (let row = 0; row < TERRITORY_ROWS; row += 1) {
@@ -53,6 +59,8 @@ export class TerritoryState {
       }
     }
 
+    let aiIndex = 0;
+
     for (const nation of this.nations) {
       const capital = this.cellAt(nation.capitalCol, nation.capitalRow);
 
@@ -62,31 +70,22 @@ export class TerritoryState {
 
       this.capitalCellIds.set(nation.id, capital.id);
       this.claimInitialBlob(nation);
+
+      if (!nation.isPlayer) {
+        this.aiElapsed.set(nation.id, aiIndex * 0.42);
+        this.aiIntervals.set(nation.id, 1.75 + aiIndex * 0.17);
+        aiIndex += 1;
+      }
     }
 
     this.version += 1;
   }
 
   public update(deltaSeconds: number): boolean {
-    const expansion = this.expansion;
-    if (!expansion) return false;
-
-    expansion.elapsed += Math.max(0, deltaSeconds);
-    if (expansion.elapsed < expansion.duration) return false;
-
-    const target = this.cells[expansion.targetId];
-
-    if (
-      target &&
-      target.owner === null &&
-      this.isPlayerFrontier(target)
-    ) {
-      target.owner = this.playerNation;
-      this.version += 1;
-    }
-
-    this.expansion = null;
-    return true;
+    const safeDelta = Math.max(0, Math.min(deltaSeconds, 0.1));
+    const playerCompleted = this.updatePlayerExpansion(safeDelta);
+    this.updateAiExpansion(safeDelta);
+    return playerCompleted;
   }
 
   public tapWorld(x: number, z: number): string {
@@ -106,15 +105,14 @@ export class TerritoryState {
     }
 
     if (cell.owner) {
-      const nation = this.nation(cell.owner);
-      return `${nation.name} territory · war unlocks later`;
+      return `${this.nation(cell.owner).name} territory · war unlocks later`;
     }
 
     if (this.expansion) {
       return "Expansion already in progress";
     }
 
-    if (!this.isPlayerFrontier(cell)) {
+    if (!this.isFrontierFor(cell, this.playerNation)) {
       return "Neutral land · not connected to your border";
     }
 
@@ -137,29 +135,60 @@ export class TerritoryState {
       x < -WORLD_WIDTH / 2 ||
       x > WORLD_WIDTH / 2 ||
       z < -WORLD_DEPTH / 2 ||
-      z > WORLD_DEPTH / 2
-    ) {
-      return null;
-    }
-
-    if (
+      z > WORLD_DEPTH / 2 ||
       x < GRID_MIN_X ||
-      x >= GRID_MIN_X + GRID_WIDTH ||
+      x >= GRID_MIN_X + TERRITORY_GRID_WIDTH ||
       z < GRID_MIN_Z ||
-      z >= GRID_MIN_Z + GRID_DEPTH
+      z >= GRID_MIN_Z + TERRITORY_GRID_DEPTH
     ) {
       return null;
     }
 
-    const col = Math.floor((x - GRID_MIN_X) / TERRITORY_CELL_SIZE);
-    const row = Math.floor((z - GRID_MIN_Z) / TERRITORY_CELL_SIZE);
-    return this.cellAt(col, row);
+    const approximateCol = Math.floor(
+      (x - GRID_MIN_X) / TERRITORY_CELL_SIZE,
+    );
+    const approximateRow = Math.floor(
+      (z - GRID_MIN_Z) / TERRITORY_CELL_SIZE,
+    );
+
+    let best: TerritoryCell | null = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    for (let rowOffset = -1; rowOffset <= 1; rowOffset += 1) {
+      for (let colOffset = -1; colOffset <= 1; colOffset += 1) {
+        const candidate = this.cellAt(
+          approximateCol + colOffset,
+          approximateRow + rowOffset,
+        );
+        if (!candidate) continue;
+
+        const center = this.cellCenter(candidate);
+        const distance =
+          (center.x - x) * (center.x - x) +
+          (center.z - z) * (center.z - z);
+
+        if (distance < bestDistance) {
+          best = candidate;
+          bestDistance = distance;
+        }
+      }
+    }
+
+    return best;
   }
 
   public cellCenter(cell: TerritoryCell): { x: number; z: number } {
+    const jitter = visualOffset(cell.col, cell.row);
+
     return {
-      x: GRID_MIN_X + (cell.col + 0.5) * TERRITORY_CELL_SIZE,
-      z: GRID_MIN_Z + (cell.row + 0.5) * TERRITORY_CELL_SIZE,
+      x:
+        GRID_MIN_X +
+        (cell.col + 0.5 + jitter.x * VISUAL_JITTER) *
+          TERRITORY_CELL_SIZE,
+      z:
+        GRID_MIN_Z +
+        (cell.row + 0.5 + jitter.z * VISUAL_JITTER) *
+          TERRITORY_CELL_SIZE,
     };
   }
 
@@ -196,15 +225,11 @@ export class TerritoryState {
   }
 
   public isPlayerFrontier(cell: TerritoryCell): boolean {
-    if (cell.owner !== null) return false;
-
-    return this.neighbors(cell).some(
-      (neighbor) => neighbor.owner === this.playerNation,
-    );
+    return this.isFrontierFor(cell, this.playerNation);
   }
 
   public frontierCells(): TerritoryCell[] {
-    return this.cells.filter((cell) => this.isPlayerFrontier(cell));
+    return this.frontierCellsFor(this.playerNation);
   }
 
   public ownedCount(nationId: NationId): number {
@@ -230,6 +255,107 @@ export class TerritoryState {
   public isCapital(cell: TerritoryCell): boolean {
     if (!cell.owner) return false;
     return this.capitalCellIds.get(cell.owner) === cell.id;
+  }
+
+  private updatePlayerExpansion(deltaSeconds: number): boolean {
+    const expansion = this.expansion;
+    if (!expansion) return false;
+
+    expansion.elapsed += deltaSeconds;
+    if (expansion.elapsed < expansion.duration) return false;
+
+    const target = this.cells[expansion.targetId];
+
+    if (
+      target &&
+      target.owner === null &&
+      this.isFrontierFor(target, this.playerNation)
+    ) {
+      target.owner = this.playerNation;
+      this.version += 1;
+    }
+
+    this.expansion = null;
+    return true;
+  }
+
+  private updateAiExpansion(deltaSeconds: number): void {
+    for (const nation of this.nations) {
+      if (nation.isPlayer) continue;
+
+      const interval = this.aiIntervals.get(nation.id) ?? 2;
+      const elapsed = (this.aiElapsed.get(nation.id) ?? 0) + deltaSeconds;
+
+      if (elapsed < interval) {
+        this.aiElapsed.set(nation.id, elapsed);
+        continue;
+      }
+
+      this.aiElapsed.set(nation.id, elapsed - interval);
+      this.expandAiNation(nation);
+    }
+  }
+
+  private expandAiNation(nation: NationDefinition): void {
+    const frontier = this.frontierCellsFor(nation.id);
+    if (frontier.length === 0) return;
+
+    const capital = this.capitalCell(nation.id);
+    if (!capital) return;
+
+    const capitalCenter = this.cellCenter(capital);
+    let best: TerritoryCell | null = null;
+    let bestScore = Number.NEGATIVE_INFINITY;
+
+    for (const cell of frontier) {
+      const center = this.cellCenter(cell);
+      const distanceFromCapital = Math.hypot(
+        center.x - capitalCenter.x,
+        center.z - capitalCenter.z,
+      );
+      const centrality =
+        1 -
+        Math.min(
+          1,
+          Math.hypot(center.x, center.z) /
+            Math.hypot(WORLD_WIDTH / 2, WORLD_DEPTH / 2),
+        );
+      const noise =
+        hash3(cell.id, this.version, nation.capitalCol + nation.capitalRow) *
+        90;
+
+      const score =
+        distanceFromCapital * 0.035 +
+        centrality * 85 +
+        noise;
+
+      if (score > bestScore) {
+        best = cell;
+        bestScore = score;
+      }
+    }
+
+    if (best && best.owner === null) {
+      best.owner = nation.id;
+      this.version += 1;
+    }
+  }
+
+  private isFrontierFor(
+    cell: TerritoryCell,
+    nationId: NationId,
+  ): boolean {
+    if (cell.owner !== null) return false;
+
+    return this.neighbors(cell).some(
+      (neighbor) => neighbor.owner === nationId,
+    );
+  }
+
+  private frontierCellsFor(nationId: NationId): TerritoryCell[] {
+    return this.cells.filter((cell) =>
+      this.isFrontierFor(cell, nationId),
+    );
   }
 
   private claimInitialBlob(nation: NationDefinition): void {
@@ -264,9 +390,27 @@ export class TerritoryState {
   }
 }
 
+function visualOffset(
+  col: number,
+  row: number,
+): { x: number; z: number } {
+  return {
+    x: hash2(col * 3 + 17, row * 5 + 29) * 2 - 1,
+    z: hash2(col * 7 + 41, row * 11 + 13) * 2 - 1,
+  };
+}
+
 function hash2(x: number, y: number): number {
   let value = Math.imul(x ^ 0x9e3779b9, 0x85ebca6b);
   value ^= Math.imul(y ^ 0xc2b2ae35, 0x27d4eb2f);
   value ^= value >>> 15;
+  return (value >>> 0) / 4294967295;
+}
+
+function hash3(x: number, y: number, z: number): number {
+  let value = Math.imul(x ^ 0x85ebca6b, 0xc2b2ae35);
+  value ^= Math.imul(y ^ 0x27d4eb2f, 0x165667b1);
+  value ^= Math.imul(z ^ 0x9e3779b9, 0x85ebca6b);
+  value ^= value >>> 16;
   return (value >>> 0) / 4294967295;
 }
