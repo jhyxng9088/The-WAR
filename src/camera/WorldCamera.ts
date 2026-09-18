@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { WORLD_HALF_DEPTH, WORLD_HALF_WIDTH } from '../world/WorldField';
 
-const FOV = 34;
-const DEFAULT_DISTANCE = 190;
+const FOV = 35;
+const DEFAULT_DISTANCE = 560;
 const DEFAULT_YAW = 0.67;
-const DEFAULT_PITCH = 1.07;
+const DEFAULT_PITCH = 1.03;
 
 export interface SurfaceCoverage {
   width: number;
@@ -12,8 +12,8 @@ export interface SurfaceCoverage {
 }
 
 export class WorldCamera {
-  readonly camera = new THREE.PerspectiveCamera(FOV, 16 / 9, 0.2, 1400);
-  readonly target = new THREE.Vector3(0, 1.5, -10);
+  readonly camera = new THREE.PerspectiveCamera(FOV, 16 / 9, 0.5, 2600);
+  readonly target = new THREE.Vector3(0, 3, -24);
 
   constructor() {
     const horizontal = Math.cos(DEFAULT_PITCH) * DEFAULT_DISTANCE;
@@ -28,8 +28,8 @@ export class WorldCamera {
 
   static requiredSurfaceCoverage(): SurfaceCoverage {
     return {
-      width: (WORLD_HALF_WIDTH + 620) * 2,
-      depth: (WORLD_HALF_DEPTH + 620) * 2,
+      width: (WORLD_HALF_WIDTH + 980) * 2,
+      depth: (WORLD_HALF_DEPTH + 980) * 2,
     };
   }
 
