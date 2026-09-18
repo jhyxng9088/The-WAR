@@ -27,10 +27,6 @@ interface MultiGestureState {
   angle: number;
   centerX: number;
   centerY: number;
-  firstX: number;
-  firstY: number;
-  secondX: number;
-  secondY: number;
 }
 
 type MultiGestureMode = "undecided" | "tilt" | "transform";
@@ -42,6 +38,7 @@ const PAN_THRESHOLD = 4;
 export class MapGestureController {
   private abortController: AbortController | null = null;
   private readonly pointers = new Map<number, PointerPoint>();
+  private readonly multiMovedPointers = new Set<number>();
   private single: SingleGestureState | null = null;
   private multi: MultiGestureState | null = null;
   private multiOrigin: MultiGestureState | null = null;
@@ -89,6 +86,7 @@ export class MapGestureController {
     this.abortController?.abort();
     this.abortController = null;
     this.pointers.clear();
+    this.multiMovedPointers.clear();
     this.single = null;
     this.multi = null;
     this.multiOrigin = null;
@@ -121,7 +119,7 @@ export class MapGestureController {
           sinceLastTap <= DOUBLE_TAP_MS &&
           fromLastTap <= DOUBLE_TAP_DISTANCE,
       };
-      this.multi = null;
+      this.resetMultiGesture();
       return;
     }
 
@@ -130,6 +128,7 @@ export class MapGestureController {
       this.multi = this.readMultiState();
       this.multiOrigin = this.multi;
       this.multiMode = "undecided";
+      this.multiMovedPointers.clear();
     }
   };
 
@@ -148,6 +147,7 @@ export class MapGestureController {
     }
 
     if (this.pointers.size === 2) {
+      this.multiMovedPointers.add(event.pointerId);
       this.handleMultiMove();
     }
   };
@@ -199,7 +199,12 @@ export class MapGestureController {
     const angleDelta = normalizeAngle(current.angle - previous.angle);
 
     const totalScaleChange = Math.abs(
-      Math.log(Math.max(current.distance / Math.max(origin.distance, 0.0001), 0.0001)),
+      Math.log(
+        Math.max(
+          current.distance / Math.max(origin.distance, 0.0001),
+          0.0001,
+        ),
+      ),
     );
     const totalRotation = Math.abs(
       normalizeAngle(current.angle - origin.angle),
@@ -207,16 +212,19 @@ export class MapGestureController {
     const totalCenterX = current.centerX - origin.centerX;
     const totalCenterY = current.centerY - origin.centerY;
 
-    if (this.multiMode === "undecided") {
+    if (
+      this.multiMode === "undecided" &&
+      this.multiMovedPointers.size >= 2
+    ) {
       const verticalIntent =
-        Math.abs(totalCenterY) > 7 &&
-        Math.abs(totalCenterY) > Math.abs(totalCenterX) * 1.15 &&
-        totalScaleChange < 0.045 &&
-        totalRotation < 0.055;
+        Math.abs(totalCenterY) > 4 &&
+        Math.abs(totalCenterY) > Math.abs(totalCenterX) * 0.82 &&
+        totalScaleChange < 0.09 &&
+        totalRotation < 0.1;
 
       const transformIntent =
-        totalScaleChange > 0.035 ||
-        totalRotation > 0.045;
+        totalScaleChange > 0.06 ||
+        totalRotation > 0.07;
 
       if (verticalIntent) {
         this.multiMode = "tilt";
@@ -228,19 +236,22 @@ export class MapGestureController {
     if (this.multiMode === "tilt") {
       const deltaY = current.centerY - previous.centerY;
 
-      if (Math.abs(deltaY) > 0.05) {
+      if (Math.abs(deltaY) > 0.02) {
         this.callbacks.tilt(deltaY);
         this.callbacks.activity(
           "Apple Maps tilt · 2-finger vertical drag",
         );
       }
-    } else if (this.multiMode === "transform") {
+    } else {
       const pinchMagnitude = Math.abs(
         Math.log(Math.max(distanceScale, 0.0001)),
       );
       const rotationMagnitude = Math.abs(angleDelta);
 
-      if (pinchMagnitude > 0.0015) {
+      if (
+        this.multiMode === "transform" &&
+        pinchMagnitude > 0.0015
+      ) {
         this.callbacks.zoom(
           distanceScale,
           current.centerX,
@@ -250,7 +261,10 @@ export class MapGestureController {
         this.callbacks.activity("Apple Maps zoom · pinch");
       }
 
-      if (rotationMagnitude > 0.0015) {
+      if (
+        this.multiMode === "transform" &&
+        rotationMagnitude > 0.0015
+      ) {
         this.callbacks.rotate(angleDelta);
         this.callbacks.activity("Apple Maps rotate · 2 fingers");
       }
@@ -299,6 +313,7 @@ export class MapGestureController {
 
   private releasePointer(pointerId: number): void {
     this.pointers.delete(pointerId);
+    this.multiMovedPointers.delete(pointerId);
 
     if (this.element.hasPointerCapture(pointerId)) {
       this.element.releasePointerCapture(pointerId);
@@ -306,9 +321,7 @@ export class MapGestureController {
 
     if (this.pointers.size === 0) {
       this.single = null;
-      this.multi = null;
-      this.multiOrigin = null;
-      this.multiMode = "undecided";
+      this.resetMultiGesture();
       return;
     }
 
@@ -329,10 +342,15 @@ export class MapGestureController {
         moved: true,
         quickZoom: false,
       };
-      this.multi = null;
-      this.multiOrigin = null;
-      this.multiMode = "undecided";
+      this.resetMultiGesture();
     }
+  }
+
+  private resetMultiGesture(): void {
+    this.multi = null;
+    this.multiOrigin = null;
+    this.multiMode = "undecided";
+    this.multiMovedPointers.clear();
   }
 
   private readonly onWheel = (event: WheelEvent): void => {
@@ -378,10 +396,6 @@ export class MapGestureController {
       angle: Math.atan2(deltaY, deltaX),
       centerX: (first.x + second.x) * 0.5,
       centerY: (first.y + second.y) * 0.5,
-      firstX: first.x,
-      firstY: first.y,
-      secondX: second.x,
-      secondY: second.y,
     };
   }
 }

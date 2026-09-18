@@ -106,7 +106,7 @@ export class StrategyCameraRig {
 
   public tilt(deltaPixels: number): void {
     this.elevation = MathUtils.clamp(
-      this.elevation + MathUtils.degToRad(deltaPixels * 0.14),
+      this.elevation + MathUtils.degToRad(deltaPixels * 0.22),
       MathUtils.degToRad(30),
       MathUtils.degToRad(84),
     );
