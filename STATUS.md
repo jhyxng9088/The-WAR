@@ -6,48 +6,51 @@ Updated: 2026-09-19
 
 **Stage 2 — Territory expansion — IN PROGRESS**
 
-## Stage 1 decision
+## Gameplay-first world override
 
-The detailed terrain experiment is intentionally paused.
+Detailed terrain work is paused by user decision.
 
-The active gameplay sandbox is now:
+Current production gameplay sandbox:
 - continent-scale flat green ground
-- no mountains, rivers, forests, terrain props, or terrain-detail rendering
-- camera and mobile gesture navigation preserved
-- world/data ownership remains isolated so terrain can return later without rewriting gameplay systems
+- no detailed terrain rendering
+- world/terrain abstraction remains intact for later return
+- gameplay loop takes priority over terrain art until the core match is fun
 
-This is deliberate. Gameplay systems are now the priority.
+## Stage 2-B active slice
 
-## Active Stage 2 slice
-
-Implemented:
-- internal neutral territory grid
-- one player nation
-- starting capital
-- small starting territory
-- tap selection
-- adjacency validation
-- timed expansion into adjacent neutral territory
-- territory ownership tint
-- outer national border rendering
-- expansion progress feedback
-- territory rendering derived from territory state rather than stored in render meshes
+Implemented in this pass:
+- five nations with separated starting locations
+- one capital per nation
+- irregular seeded starting territory blobs
+- higher-resolution hidden territory grid
+- no internal grid lines
+- smaller cells so outer silhouettes feel less blocky
+- irregularized outer border segments
+- shared nation-to-nation borders
+- nation-specific territory tint
+- player frontier dots showing legal expansion options
+- circular selection feedback instead of square-cell highlighting
+- selected foreign territory identifies the nation
+- player HUD with owned territory, frontier count, selected land, and expansion progress
+- enemy territory cannot be claimed through peaceful expansion
 
 ## Stage 2 next work
 
-After real-device review:
-- improve border silhouette so the internal cell structure is less visible
-- add cleaner selection/command feedback
-- decide expansion cost/cooldown rules
-- add additional nations/start locations
-- prepare region data for later resources and warfare
+After device review:
+- tune starting positions / territory sizes
+- decide whether expansion should be region-click, brush-like spread, or command-based
+- add simple non-player expansion behavior if it improves Stage 2 testing
+- improve border contour further if the hidden cell structure is still visually obvious
+- define the final expansion cost / cooldown model before Stage 3 resources
 
 ## Review gate
 
 Confirm on device:
-- the flat sandbox loads cleanly
-- tap selects territory
-- only adjacent neutral territory can expand
-- expansion progress completes and moves the border
-- pan/zoom/rotate/tilt still work
-- no obvious mobile performance regression
+- multiple nations are clearly visible
+- borders read as national borders rather than a board grid
+- frontier dots make legal expansion obvious
+- player expansion still works
+- foreign land is selectable but not peacefully claimable
+- HUD remains readable on phone
+- camera gestures still work
+- mobile performance remains acceptable
