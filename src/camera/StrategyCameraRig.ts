@@ -1,4 +1,11 @@
-import { MathUtils, PerspectiveCamera, Plane, Raycaster, Vector2, Vector3 } from "three";
+import {
+  MathUtils,
+  PerspectiveCamera,
+  Plane,
+  Raycaster,
+  Vector2,
+  Vector3,
+} from "three";
 
 const GROUND_PLANE = new Plane(new Vector3(0, 1, 0), 0);
 
@@ -39,7 +46,11 @@ export class StrategyCameraRig {
     const unitsPerPixel = worldHeight / this.viewportHeight;
 
     const right = new Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
-    const forward = new Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+    const forward = new Vector3(
+      -Math.sin(this.yaw),
+      0,
+      -Math.cos(this.yaw),
+    );
 
     this.target.addScaledVector(right, -deltaX * unitsPerPixel);
     this.target.addScaledVector(forward, deltaY * unitsPerPixel);
@@ -59,11 +70,24 @@ export class StrategyCameraRig {
         ? this.groundPointFromClient(clientX, clientY, rect)
         : null;
 
-    this.distance = MathUtils.clamp(this.distance / safeScale, 250, 8600);
+    this.distance = MathUtils.clamp(
+      this.distance / safeScale,
+      250,
+      8600,
+    );
     this.applyPose();
 
-    if (anchorBefore && clientX !== undefined && clientY !== undefined && rect) {
-      const anchorAfter = this.groundPointFromClient(clientX, clientY, rect);
+    if (
+      anchorBefore &&
+      clientX !== undefined &&
+      clientY !== undefined &&
+      rect
+    ) {
+      const anchorAfter = this.groundPointFromClient(
+        clientX,
+        clientY,
+        rect,
+      );
 
       if (anchorAfter) {
         this.target.add(anchorBefore.sub(anchorAfter));
@@ -74,15 +98,17 @@ export class StrategyCameraRig {
   }
 
   public rotate(deltaRadians: number): void {
-    this.yaw -= deltaRadians;
+    // Match map-style rotation: the map follows the fingers instead of
+    // rotating opposite to the gesture.
+    this.yaw += deltaRadians;
     this.applyPose();
   }
 
   public tilt(deltaPixels: number): void {
     this.elevation = MathUtils.clamp(
-      this.elevation + MathUtils.degToRad(deltaPixels * 0.1),
-      MathUtils.degToRad(34),
-      MathUtils.degToRad(82),
+      this.elevation + MathUtils.degToRad(deltaPixels * 0.14),
+      MathUtils.degToRad(30),
+      MathUtils.degToRad(84),
     );
     this.applyPose();
   }
@@ -99,26 +125,40 @@ export class StrategyCameraRig {
 
     this.raycaster.setFromCamera(ndc, this.camera);
     const result = new Vector3();
-    return this.raycaster.ray.intersectPlane(GROUND_PLANE, result);
+    return this.raycaster.ray.intersectPlane(
+      GROUND_PLANE,
+      result,
+    );
   }
 
   private clampTarget(): void {
     const xMargin = this.halfWorldWidth * 0.52;
     const zMargin = this.halfWorldDepth * 0.52;
 
-    this.target.x = MathUtils.clamp(this.target.x, -xMargin, xMargin);
-    this.target.z = MathUtils.clamp(this.target.z, -zMargin, zMargin);
+    this.target.x = MathUtils.clamp(
+      this.target.x,
+      -xMargin,
+      xMargin,
+    );
+    this.target.z = MathUtils.clamp(
+      this.target.z,
+      -zMargin,
+      zMargin,
+    );
     this.target.y = 0;
   }
 
   private applyPose(): void {
-    const horizontalDistance = Math.cos(this.elevation) * this.distance;
+    const horizontalDistance =
+      Math.cos(this.elevation) * this.distance;
     const height = Math.sin(this.elevation) * this.distance;
 
     this.camera.position.set(
-      this.target.x + Math.sin(this.yaw) * horizontalDistance,
+      this.target.x +
+        Math.sin(this.yaw) * horizontalDistance,
       height,
-      this.target.z + Math.cos(this.yaw) * horizontalDistance,
+      this.target.z +
+        Math.cos(this.yaw) * horizontalDistance,
     );
     this.camera.lookAt(this.target);
     this.camera.updateMatrixWorld();
