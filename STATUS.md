@@ -4,11 +4,11 @@ Updated: 2026-09-18
 
 ## Current stage
 
-**Stage 0 — Foundation / clean project shell**
+**Stage 0 — Foundation / clean project shell — COMPLETE**
 
 ### Active slice
 
-0-B — application shell, render loop, viewport, PWA, diagnostics, and map gesture foundation.
+Stage 0 is merged to `main` and deployed to GitHub Pages.
 
 ### Stage 0 checklist
 
@@ -25,9 +25,9 @@ Updated: 2026-09-18
 - [x] PWA manifest + service worker base
 - [x] Supabase browser configuration isolated from gameplay
 - [x] basic runtime diagnostics
-- [ ] PR CI verified
-- [ ] squash merge verified
-- [ ] GitHub Pages production deploy verified
+- [x] PR CI verified
+- [x] squash merge verified
+- [x] GitHub Pages production deploy verified
 
 ## Next stage
 
