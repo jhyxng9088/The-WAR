@@ -448,7 +448,25 @@ function createRuntimeHeightmap(
         tx,
       );
 
-      values[y * targetWidth + x] = clamp01(catmullRom(row0, row1, row2, row3, ty));
+      const a = sourceAt(x1, y1);
+      const b = sourceAt(x1 + 1, y1);
+      const c0 = sourceAt(x1, y1 + 1);
+      const d = sourceAt(x1 + 1, y1 + 1);
+      const top = a + (b - a) * tx;
+      const bottom = c0 + (d - c0) * tx;
+      const bilinear = top + (bottom - top) * ty;
+
+      let smoothed = clamp01(catmullRom(row0, row1, row2, row3, ty));
+
+      // Preserve the original bilinear land/water classification so smoothing
+      // cannot create tiny shoreline islands or holes.
+      if (bilinear <= LAND_THRESHOLD) {
+        smoothed = Math.min(smoothed, LAND_THRESHOLD);
+      } else {
+        smoothed = Math.max(smoothed, LAND_THRESHOLD + 0.00001);
+      }
+
+      values[y * targetWidth + x] = smoothed;
     }
   }
 
