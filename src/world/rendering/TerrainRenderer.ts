@@ -24,9 +24,16 @@ const BIOME_COLORS: Record<TerrainSample['biome'], THREE.Color> = {
   rocky: new THREE.Color(0x85877c),
 };
 
-export function addTerrain(scene: THREE.Scene): void {
-  scene.add(createOcean());
-  scene.add(createLand());
+export interface TerrainRenderHandle {
+  readonly ocean: THREE.Mesh;
+  readonly land: THREE.Mesh;
+}
+
+export function addTerrain(scene: THREE.Scene): TerrainRenderHandle {
+  const ocean = createOcean();
+  const land = createLand();
+  scene.add(ocean, land);
+  return { ocean, land };
 }
 
 function createOcean(): THREE.Mesh {
