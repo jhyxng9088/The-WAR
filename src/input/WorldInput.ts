@@ -2,11 +2,11 @@ import * as THREE from 'three';
 import { MapControls } from 'three/addons/controls/MapControls.js';
 import { WorldCamera } from '../camera/WorldCamera';
 
-const MIN_DISTANCE = 30;
-const MAX_DISTANCE = 460;
-const MIN_POLAR_ANGLE = 0.3;
-const MAX_POLAR_ANGLE = 0.9;
-const MAX_TARGET_RADIUS = 560;
+const MIN_DISTANCE = 85;
+const MAX_DISTANCE = 1350;
+const MIN_POLAR_ANGLE = 0.30;
+const MAX_POLAR_ANGLE = 0.92;
+const MAX_TARGET_RADIUS = 980;
 
 export class WorldInput {
   private readonly controls: MapControls;
@@ -19,9 +19,6 @@ export class WorldInput {
     controls.target.copy(camera.target);
     controls.cursor.set(0, camera.target.y, 0);
 
-    // Keep the standard bird's-eye map gestures, but smooth irregular touch
-    // event cadence over animation frames. This is especially noticeable on
-    // iPadOS where pointer events can arrive in slightly uneven bursts.
     controls.touches.ONE = THREE.TOUCH.PAN;
     controls.touches.TWO = THREE.TOUCH.DOLLY_ROTATE;
     controls.screenSpacePanning = false;
@@ -37,7 +34,7 @@ export class WorldInput {
 
     controls.panSpeed = 1.0;
     controls.zoomSpeed = 0.9;
-    controls.rotateSpeed = 0.65;
+    controls.rotateSpeed = 0.62;
 
     controls.update();
     this.controls = controls;

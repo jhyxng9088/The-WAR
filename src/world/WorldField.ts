@@ -6,14 +6,14 @@ import {
 import { decodeHeightmapBase64 } from './HeightmapCodec';
 import { strategicMountainReliefAt } from './StrategicMountainRelief';
 
-export const MAP_SCALE = 2.5;
-export const WORLD_WIDTH = 420;
-export const WORLD_DEPTH = 420;
+export const MAP_SCALE = 6.0;
+export const WORLD_WIDTH = 1020;
+export const WORLD_DEPTH = 1020;
 export const WORLD_HALF_WIDTH = WORLD_WIDTH / 2;
 export const WORLD_HALF_DEPTH = WORLD_DEPTH / 2;
 export const TERRAIN_SEGMENTS_X = 256;
 export const TERRAIN_SEGMENTS_Z = 256;
-export const SEA_LEVEL = -0.5;
+export const SEA_LEVEL = -0.8;
 
 export type XZ = readonly [number, number];
 
@@ -51,7 +51,7 @@ export interface WorldHeightmapSnapshot {
 export const RIVERS: readonly RiverDefinition[] = [];
 
 const LAND_THRESHOLD = 0.028;
-const MAX_LAND_HEIGHT = 12.2;
+const MAX_LAND_HEIGHT = 26.0;
 const AUTHORED_HEIGHT_BYTES = decodeHeightmapBase64(WORLD_HEIGHTMAP_U8);
 
 let HEIGHT_BYTES = AUTHORED_HEIGHT_BYTES;

@@ -3,8 +3,8 @@ import { createRibbonGeometry, type RibbonSample } from '../../rendering/geometr
 import { isLandAt, terrainHeight, type XZ } from '../WorldField';
 import type { StrategicTerritory } from '../StrategicWorld';
 
-const TINT_GRID = 3.4;
-const BORDER_SAMPLE_SPACING = 1.6;
+const TINT_GRID = 10;
+const BORDER_SAMPLE_SPACING = 4.2;
 
 export function addTerritory(scene: THREE.Scene, territory: StrategicTerritory): void {
   if (territory.polygon.length < 3) return;
@@ -19,13 +19,14 @@ function addTerrainTint(scene: THREE.Scene, territory: StrategicTerritory): void
     new THREE.MeshBasicMaterial({
       color: territory.color,
       transparent: true,
-      opacity: 0.075,
+      opacity: 0.085,
       depthWrite: false,
       polygonOffset: true,
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -1,
     }),
   );
+  tint.name = `territory-${territory.id}-tint`;
   tint.renderOrder = 3.2;
   scene.add(tint);
 }
@@ -56,10 +57,10 @@ function createTerrainConformingFill(polygon: readonly XZ[]): THREE.BufferGeomet
       const z1 = Math.min(z + TINT_GRID, maxZ);
       const base = positions.length / 3;
       positions.push(
-        x, terrainHeight(x, z) + 0.052, z,
-        x1, terrainHeight(x1, z) + 0.052, z,
-        x1, terrainHeight(x1, z1) + 0.052, z1,
-        x, terrainHeight(x, z1) + 0.052, z1,
+        x, terrainHeight(x, z) + 0.12, z,
+        x1, terrainHeight(x1, z) + 0.12, z,
+        x1, terrainHeight(x1, z1) + 0.12, z1,
+        x, terrainHeight(x, z1) + 0.12, z1,
       );
       indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
     }
@@ -97,8 +98,8 @@ function sampleBorder(polygon: readonly XZ[]): XZ[] {
 
 function addBorder(scene: THREE.Scene, color: number, borderPoints: readonly XZ[]): void {
   const samples: RibbonSample[] = borderPoints.map(([x, z]) => ({
-    position: new THREE.Vector3(x, terrainHeight(x, z) + 0.095, z),
-    width: 0.11,
+    position: new THREE.Vector3(x, terrainHeight(x, z) + 0.24, z),
+    width: 1.15,
   }));
   const first = samples[0];
   if (!first) return;
@@ -109,10 +110,11 @@ function addBorder(scene: THREE.Scene, color: number, borderPoints: readonly XZ[
     new THREE.MeshBasicMaterial({
       color,
       transparent: true,
-      opacity: 0.58,
+      opacity: 0.9,
       depthWrite: false,
     }),
   );
+  border.name = 'stylized-territory-border';
   border.renderOrder = 4.6;
   scene.add(border);
 }

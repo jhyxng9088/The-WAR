@@ -13,6 +13,9 @@ interface MountainRange {
   seed: number;
 }
 
+const HORIZONTAL_SCALE = 2.43;
+const VERTICAL_SCALE = 1.75;
+
 // Broad, separated ranges keep several defensible high-ground regions without
 // turning the center of the strategic map into one dominant mountain fortress.
 const MOUNTAIN_RANGES: readonly MountainRange[] = [
@@ -47,24 +50,24 @@ export function strategicMountainReliefAt(
 }
 
 function rangeSample(range: MountainRange, x: number, z: number): StrategicMountainRelief {
-  const dx = x - range.centerX;
-  const dz = z - range.centerZ;
+  const dx = x - range.centerX * HORIZONTAL_SCALE;
+  const dz = z - range.centerZ * HORIZONTAL_SCALE;
   const cos = Math.cos(range.angle);
   const sin = Math.sin(range.angle);
-  const along = (dx * cos + dz * sin) / range.halfLength;
-  const across = (-dx * sin + dz * cos) / range.halfWidth;
+  const along = (dx * cos + dz * sin) / (range.halfLength * HORIZONTAL_SCALE);
+  const across = (-dx * sin + dz * cos) / (range.halfWidth * HORIZONTAL_SCALE);
 
   const alongEnvelope = Math.exp(-Math.pow(Math.abs(along), 4) * 1.8);
   const ridgeCore = Math.exp(-(across * across) * 2.45);
   const foothills = Math.exp(-(across * across) * 0.72) * 0.34;
   const broken = 0.82 + 0.18 * valueNoise(
-    x * 0.035 + range.seed * 0.17,
-    z * 0.035 - range.seed * 0.11,
+    x * (0.035 / HORIZONTAL_SCALE) + range.seed * 0.17,
+    z * (0.035 / HORIZONTAL_SCALE) - range.seed * 0.11,
     range.seed,
   );
   const secondary = 0.88 + 0.12 * valueNoise(
-    x * 0.076 - range.seed * 0.09,
-    z * 0.076 + range.seed * 0.13,
+    x * (0.076 / HORIZONTAL_SCALE) - range.seed * 0.09,
+    z * (0.076 / HORIZONTAL_SCALE) + range.seed * 0.13,
     range.seed + 97,
   );
 
@@ -73,7 +76,7 @@ function rangeSample(range: MountainRange, x: number, z: number): StrategicMount
   const strength = smoothstep01((ridge - 0.14) / 0.72);
 
   return {
-    height: crest * range.height,
+    height: crest * range.height * VERTICAL_SCALE,
     strength,
   };
 }
