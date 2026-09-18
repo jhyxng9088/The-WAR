@@ -181,13 +181,92 @@ vec3 terrainFilteredSample( sampler2D tex, vec2 uv ) {
   return texture2D( tex, uv, 1.35 ).rgb;
 }
 
+vec2 terrainTileRandom( vec2 cell, float seed ) {
+  return vec2(
+    terrainHash( cell + vec2( seed * 19.17 + 3.1, seed * 7.73 + 11.9 ) ),
+    terrainHash( cell + vec2( seed * 5.31 + 17.7, seed * 23.41 + 2.9 ) )
+  );
+}
+
+vec2 terrainTileTransform( vec2 uv, vec2 cell, float seed ) {
+  vec2 randomValue = terrainTileRandom( cell, seed );
+  float rotationIndex = floor(
+    terrainHash( cell + vec2( seed * 13.7 + 5.2, seed * 3.9 + 21.6 ) ) * 4.0
+  );
+  float mirrorX = mix(
+    -1.0,
+    1.0,
+    step(
+      0.5,
+      terrainHash( cell + vec2( seed * 29.3 + 9.4, seed * 11.1 + 4.8 ) )
+    )
+  );
+
+  vec2 transformed = vec2( uv.x * mirrorX, uv.y );
+  transformed = terrainRotation( rotationIndex * 1.57079632679 ) * transformed;
+  return transformed + randomValue * 37.0;
+}
+
+vec3 terrainStochasticTileSample(
+  sampler2D tex,
+  vec2 uv,
+  float seed,
+  float bias
+) {
+  // Blend four independently transformed copies keyed to the actual photo-tile
+  // lattice. Unlike broad patch randomization, this breaks the ~1-tile repeat
+  // that is visible at strategic zoom while preserving the original photo scale.
+  vec2 cell = floor( uv );
+  vec2 f = fract( uv );
+  vec2 blend = f * f * f * ( f * ( f * 6.0 - 15.0 ) + 10.0 );
+
+  vec3 c00 = texture2D(
+    tex,
+    terrainTileTransform( uv, cell, seed ),
+    bias
+  ).rgb;
+  vec3 c10 = texture2D(
+    tex,
+    terrainTileTransform( uv, cell + vec2( 1.0, 0.0 ), seed ),
+    bias
+  ).rgb;
+  vec3 c01 = texture2D(
+    tex,
+    terrainTileTransform( uv, cell + vec2( 0.0, 1.0 ), seed ),
+    bias
+  ).rgb;
+  vec3 c11 = texture2D(
+    tex,
+    terrainTileTransform( uv, cell + vec2( 1.0, 1.0 ), seed ),
+    bias
+  ).rgb;
+
+  return mix( mix( c00, c10, blend.x ), mix( c01, c11, blend.x ), blend.y );
+}
+
 vec3 terrainTriplanar( sampler2D tex, vec3 position, vec3 normal, float scale ) {
   vec3 blend = pow( abs( normalize( normal ) ), vec3( 4.0 ) );
   blend /= max( blend.x + blend.y + blend.z, 0.0001 );
   float worldScale = terrainRepeat / terrainWorldWidth * scale;
-  vec3 xSample = texture2D( tex, position.zy * worldScale + vec2( 4.7, 8.1 ), 1.15 ).rgb;
-  vec3 ySample = texture2D( tex, position.xz * worldScale + vec2( 12.3, 1.9 ), 1.15 ).rgb;
-  vec3 zSample = texture2D( tex, position.xy * worldScale + vec2( 2.6, 14.2 ), 1.15 ).rgb;
+
+  vec3 xSample = terrainStochasticTileSample(
+    tex,
+    position.zy * worldScale + vec2( 4.7, 8.1 ),
+    4.1,
+    1.15
+  );
+  vec3 ySample = terrainStochasticTileSample(
+    tex,
+    position.xz * worldScale + vec2( 12.3, 1.9 ),
+    5.3,
+    1.15
+  );
+  vec3 zSample = terrainStochasticTileSample(
+    tex,
+    position.xy * worldScale + vec2( 2.6, 14.2 ),
+    6.7,
+    1.15
+  );
   return xSample * blend.x + ySample * blend.y + zSample * blend.z;
 }
 
@@ -352,17 +431,32 @@ vec2 terrainXZ = vTerrainLocalPosition.xz;
 vec3 grassColor = terrainFilteredSample( terrainGrass, grassUv );
 vec3 dryForestColor = terrainFilteredSample( terrainDryForest, dryForestUv );
 vec3 forestColor = terrainFilteredSample( terrainForest, forestUv );
-vec3 mossRockColor = terrainFilteredSample( terrainMossRock, mossUv );
+vec3 mossRockColor = terrainStochasticTileSample(
+  terrainMossRock,
+  mossUv,
+  1.9,
+  1.35
+);
 vec3 dirtColor = terrainFilteredSample( terrainDirt, dirtUv );
 vec3 mudColor = terrainFilteredSample( terrainMud, mudUv );
-vec3 rockGroundColor = terrainFilteredSample( terrainRockGround, rockUv );
+vec3 rockGroundColor = terrainStochasticTileSample(
+  terrainRockGround,
+  rockUv,
+  2.7,
+  1.35
+);
 vec3 cliffColor = terrainTriplanar(
   terrainCliffRock,
   vTerrainLocalPosition,
   vTerrainLocalNormal,
   0.74
 );
-vec3 sandColor = terrainFilteredSample( terrainCoastSand, sandUv );
+vec3 sandColor = terrainStochasticTileSample(
+  terrainCoastSand,
+  sandUv,
+  7.4,
+  1.35
+);
 vec3 snowColor = terrainFilteredSample( terrainSnow, snowUv );
 
 float grassMacroVariation = terrainNoise( terrainXZ * 0.014 + vec2( 6.8, -3.1 ) );
@@ -407,7 +501,7 @@ diffuseColor.rgb *= terrainAlbedo;`,
   };
 
   material.customProgramCacheKey = () =>
-    `world-terrain-natural-blend-v5:${repeat}:${seaLevel}:${options.controlMapSize ?? 512}`;
+    `world-terrain-natural-blend-v6-tile-stochastic:${repeat}:${seaLevel}:${options.controlMapSize ?? 512}`;
 
   return material;
 }
