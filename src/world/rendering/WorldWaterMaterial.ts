@@ -11,11 +11,11 @@ interface WaterTimeUniform {
   value: number;
 }
 
-const DEEP_WATER = new THREE.Color(0x173844);
-const OFFSHORE_WATER = new THREE.Color(0x254d58);
-const SHALLOW_WATER = new THREE.Color(0x37615f);
-const SHORE_WATER = new THREE.Color(0x4a6c67);
-const REFLECTION_TINT = new THREE.Color(0x819b9d);
+const DEEP_WATER = new THREE.Color(0x153743);
+const OFFSHORE_WATER = new THREE.Color(0x214954);
+const SHALLOW_WATER = new THREE.Color(0x28515a);
+const SHORE_WATER = new THREE.Color(0x2f5559);
+const REFLECTION_TINT = new THREE.Color(0x789094);
 
 export function createWorldWaterMaterial(
   options: WorldWaterMaterialOptions = {},
@@ -160,7 +160,7 @@ float veryShallow = 1.0 - smoothstep( 0.025, 0.17, waterDepth );
 
 vec3 waterAlbedo = mix( waterShallowColor, waterDeepColor, depthBlend );
 waterAlbedo = mix( waterAlbedo, waterOffshoreColor, offshoreBlend * ( 1.0 - depthBlend ) * 0.34 );
-waterAlbedo = mix( waterAlbedo, waterShoreColor, veryShallow * 0.045 );
+waterAlbedo = mix( waterAlbedo, waterShoreColor, veryShallow * 0.015 );
 
 float waterDetailA = waterNoise(
   vWaterWorldPosition.xz * 0.090 + vec2( waterTime * 0.018, -waterTime * 0.013 )
@@ -181,8 +181,8 @@ waterAlbedo = mix( waterAlbedo, waterReflectionTint, waterFresnel * 0.075 );
 
 diffuseColor.rgb *= waterAlbedo;
 
-float depthAlpha = mix( 0.72, 0.97, smoothstep( 0.018, 0.42, waterDepth ) );
-float coastSoftening = mix( 1.0, 0.96, smoothstep( 0.55, 0.96, waterCoast ) );
+float depthAlpha = mix( 0.92, 0.985, smoothstep( 0.018, 0.42, waterDepth ) );
+float coastSoftening = mix( 1.0, 0.985, smoothstep( 0.55, 0.96, waterCoast ) );
 diffuseColor.a *= depthAlpha * coastSoftening * waterMask;`,
     );
 
@@ -209,7 +209,7 @@ roughnessFactor *= mix( 0.97, 1.03, waterRoughNoise );`,
   };
 
   material.customProgramCacheKey = () =>
-    `world-water-depth-shore-v3-muted:${controlMapSize}:${options.roughness ?? 0.48}`;
+    `world-water-depth-shore-v4-no-glow:${controlMapSize}:${options.roughness ?? 0.48}`;
 
   return material;
 }
