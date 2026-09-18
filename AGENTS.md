@@ -31,6 +31,14 @@ This override does **not** authorize deleting gameplay/terrain abstraction bound
 - `TerritoryView` may cache derived visual loops, but render geometry is never gameplay truth.
 - Smoothing is visual-only. It must never change cell adjacency, ownership, expansion legality, or AI decisions.
 
+## 0.3 Expansion operation ownership hard lock
+
+- `TerritoryState` owns Frontier Capacity, claim-operation composition, completion, and Region securing.
+- Claim operations may include several hidden cells, but each claimed cell must still become canonical ownership in `TerritoryState`.
+- `TerritoryView` may visualize all cells in an active operation, but it never decides what is legal to claim.
+- `TerritoryHud` may display capacity / operation progress, but it never owns or mutates those values.
+- Region securing may only auto-claim remaining **neutral** cells when one nation already dominates the Region and no foreign cell is present. It must never overwrite foreign ownership.
+
 THE WAR is a top-down territory-expansion war strategy game made primarily for friends to play together.
 
 The core fantasy is not "simulate a country in maximum detail." It is:

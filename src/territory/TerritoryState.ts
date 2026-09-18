@@ -19,7 +19,9 @@ export interface TerritoryCell {
 }
 
 export interface ExpansionState {
-  readonly targetId: number;
+  readonly targetIds: readonly number[];
+  readonly regionId: number;
+  readonly cost: number;
   elapsed: number;
   readonly duration: number;
 }
@@ -42,7 +44,14 @@ export const TERRITORY_GRID_DEPTH =
 
 const GRID_MIN_X = -TERRITORY_GRID_WIDTH / 2;
 const GRID_MIN_Z = -TERRITORY_GRID_DEPTH / 2;
-const EXPANSION_DURATION_SECONDS = 1.0;
+const EXPANSION_BASE_DURATION_SECONDS = 1.05;
+const EXPANSION_EXTRA_CELL_SECONDS = 0.12;
+const CLAIM_OPERATION_CELL_LIMIT = 4;
+const FRONTIER_CAPACITY_MAX = 100;
+const FRONTIER_CAPACITY_REGEN_PER_SECOND = 8;
+const CLAIM_OPERATION_BASE_COST = 24;
+const CLAIM_OPERATION_CELL_COST = 3;
+const REGION_SECURE_THRESHOLD = 0.82;
 const INITIAL_RADIUS = 3.15;
 const VISUAL_JITTER = 0.21;
 const EDGE_BEND = 0.16;
@@ -59,6 +68,7 @@ export class TerritoryState {
 
   public selectedCellId: number | null = null;
   public expansion: ExpansionState | null = null;
+  public frontierCapacity = FRONTIER_CAPACITY_MAX;
   public version = 0;
 
   private readonly aiElapsed = new Map<NationId, number>();
@@ -100,6 +110,13 @@ export class TerritoryState {
 
   public update(deltaSeconds: number): boolean {
     const safeDelta = Math.max(0, Math.min(deltaSeconds, 0.1));
+
+    this.frontierCapacity = Math.min(
+      FRONTIER_CAPACITY_MAX,
+      this.frontierCapacity +
+        safeDelta * FRONTIER_CAPACITY_REGEN_PER_SECOND,
+    );
+
     const playerCompleted = this.updatePlayerExpansion(safeDelta);
     this.updateAiExpansion(safeDelta);
     return playerCompleted;
@@ -133,18 +150,50 @@ export class TerritoryState {
       return "Neutral land · not connected to your border";
     }
 
+    const operation = this.buildClaimOperation(cell);
+    const cost =
+      CLAIM_OPERATION_BASE_COST +
+      operation.length * CLAIM_OPERATION_CELL_COST;
+
+    if (this.frontierCapacity + 0.001 < cost) {
+      return (
+        "Frontier capacity recovering · " +
+        Math.round(this.frontierCapacity) +
+        "%"
+      );
+    }
+
+    const region = this.regionForCell(cell);
+    this.frontierCapacity -= cost;
     this.expansion = {
-      targetId: cell.id,
+      targetIds: operation.map((target) => target.id),
+      regionId: region.id,
+      cost,
       elapsed: 0,
-      duration: EXPANSION_DURATION_SECONDS,
+      duration:
+        EXPANSION_BASE_DURATION_SECONDS +
+        Math.max(0, operation.length - 1) *
+          EXPANSION_EXTRA_CELL_SECONDS,
     };
 
-    return "Claiming neutral frontier…";
+    return (
+      "Claim operation · Region " +
+      region.label +
+      " · " +
+      operation.length +
+      " frontier cells"
+    );
   }
 
   public expansionProgress(): number {
     if (!this.expansion) return 0;
     return Math.min(1, this.expansion.elapsed / this.expansion.duration);
+  }
+
+  public frontierCapacityPercent(): number {
+    return Math.round(
+      (this.frontierCapacity / FRONTIER_CAPACITY_MAX) * 100,
+    );
   }
 
   public cellFromWorld(x: number, z: number): TerritoryCell | null {
@@ -256,9 +305,12 @@ export class TerritoryState {
     return this.cells[this.selectedCellId] ?? null;
   }
 
-  public expansionCell(): TerritoryCell | null {
-    if (!this.expansion) return null;
-    return this.cells[this.expansion.targetId] ?? null;
+  public expansionCells(): TerritoryCell[] {
+    if (!this.expansion) return [];
+
+    return this.expansion.targetIds
+      .map((id) => this.cells[id])
+      .filter((cell): cell is TerritoryCell => cell !== undefined);
   }
 
   public neighbors(cell: TerritoryCell): TerritoryCell[] {
@@ -360,14 +412,26 @@ export class TerritoryState {
     expansion.elapsed += deltaSeconds;
     if (expansion.elapsed < expansion.duration) return false;
 
-    const target = this.cells[expansion.targetId];
+    let claimedAny = false;
 
-    if (
-      target &&
-      target.owner === null &&
-      this.isFrontierFor(target, this.playerNation)
-    ) {
-      target.owner = this.playerNation;
+    for (const targetId of expansion.targetIds) {
+      const target = this.cells[targetId];
+
+      if (
+        target &&
+        target.owner === null &&
+        this.isFrontierFor(target, this.playerNation)
+      ) {
+        target.owner = this.playerNation;
+        claimedAny = true;
+      }
+    }
+
+    if (claimedAny) {
+      this.secureRegionIfDominant(
+        this.playerNation,
+        expansion.regionId,
+      );
       this.version += 1;
     }
 
@@ -446,7 +510,103 @@ export class TerritoryState {
 
     if (best && best.owner === null) {
       best.owner = nation.id;
+      const region = this.regionForCell(best);
+      this.secureRegionIfDominant(nation.id, region.id);
       this.version += 1;
+    }
+  }
+
+  private buildClaimOperation(
+    seed: TerritoryCell,
+  ): TerritoryCell[] {
+    const regionId = this.regionForCell(seed).id;
+    const selected: TerritoryCell[] = [];
+    const selectedIds = new Set<number>();
+    const queuedIds = new Set<number>([seed.id]);
+    const queue: TerritoryCell[] = [seed];
+
+    while (
+      queue.length > 0 &&
+      selected.length < CLAIM_OPERATION_CELL_LIMIT
+    ) {
+      const current = queue.shift();
+      if (!current || current.owner !== null) continue;
+      if (this.regionForCell(current).id !== regionId) continue;
+
+      const connectedToPlayer = this.isFrontierFor(
+        current,
+        this.playerNation,
+      );
+      const connectedToOperation = this.neighbors(current).some(
+        (neighbor) => selectedIds.has(neighbor.id),
+      );
+
+      if (!connectedToPlayer && !connectedToOperation) continue;
+
+      selected.push(current);
+      selectedIds.add(current.id);
+
+      const next = this.neighbors(current)
+        .filter(
+          (neighbor) =>
+            neighbor.owner === null &&
+            this.regionForCell(neighbor).id === regionId &&
+            !queuedIds.has(neighbor.id),
+        )
+        .sort(
+          (a, b) =>
+            this.playerNeighborCount(b) -
+              this.playerNeighborCount(a) ||
+            a.id - b.id,
+        );
+
+      for (const neighbor of next) {
+        queuedIds.add(neighbor.id);
+        queue.push(neighbor);
+      }
+    }
+
+    return selected.length > 0 ? selected : [seed];
+  }
+
+  private playerNeighborCount(cell: TerritoryCell): number {
+    return this.neighbors(cell).filter(
+      (neighbor) => neighbor.owner === this.playerNation,
+    ).length;
+  }
+
+  private secureRegionIfDominant(
+    nationId: NationId,
+    regionId: number,
+  ): void {
+    const region = this.regionIndex.regionById(regionId);
+    let owned = 0;
+    let neutral = 0;
+    let foreign = 0;
+
+    for (const cellId of region.cellIds) {
+      const cell = this.cells[cellId];
+      if (!cell) continue;
+
+      if (cell.owner === nationId) {
+        owned += 1;
+      } else if (cell.owner === null) {
+        neutral += 1;
+      } else {
+        foreign += 1;
+      }
+    }
+
+    if (foreign > 0 || neutral === 0) return;
+
+    const share = owned / region.cellIds.length;
+    if (share < REGION_SECURE_THRESHOLD) return;
+
+    for (const cellId of region.cellIds) {
+      const cell = this.cells[cellId];
+      if (cell && cell.owner === null) {
+        cell.owner = nationId;
+      }
     }
   }
 

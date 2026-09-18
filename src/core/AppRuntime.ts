@@ -54,7 +54,7 @@ export class AppRuntime {
       "STAGE 2 · TERRITORY",
     );
     this.diagnostics.setContext(
-      "Stage 2-H · refined borders · Region control readout",
+      "Stage 2-I · claim operations · frontier capacity",
     );
 
     this.viewport = new ViewportController(
