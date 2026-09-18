@@ -36,7 +36,7 @@ export interface WorldSceneHandle {
 
 const TERRAIN_SEGMENTS_X = 180;
 const TERRAIN_SEGMENTS_Z = 132;
-const FOREST_INSTANCE_COUNT = 520;
+const FOREST_INSTANCE_COUNT = 460;
 
 export function createWorldScene(): WorldSceneHandle {
   const field = new WorldField();
@@ -160,12 +160,14 @@ function terrainColor(
     color = new Color(0xb8aa7b);
   } else if (height < 70) {
     color = new Color(0x82936d);
-  } else if (height < 140) {
+  } else if (height < 155) {
     color = new Color(0x748367);
-  } else if (height < 215) {
-    color = new Color(0x7a7965);
+  } else if (height < 280) {
+    color = new Color(0x787a67);
+  } else if (height < 430) {
+    color = new Color(0x777269);
   } else {
-    color = new Color(0x77766d);
+    color = new Color(0x6e6a66);
   }
 
   if (riverDistance < 150 && height < 105) {
@@ -263,7 +265,7 @@ function createForest(field: WorldField): {
   geometry: IcosahedronGeometry;
   material: MeshStandardMaterial;
 } {
-  const geometry = new IcosahedronGeometry(1, 1);
+  const geometry = new IcosahedronGeometry(1, 0);
   const material = new MeshStandardMaterial({
     color: 0x405b45,
     roughness: 1,
@@ -291,15 +293,15 @@ function createForest(field: WorldField): {
     const height = field.heightAt(x, z);
     if (height <= SEA_LEVEL + 4) continue;
 
-    const radius = 9 + random() * 14;
-    const vertical = 4 + random() * 5;
+    const radius = 1.8 + random() * 2.4;
+    const vertical = 3.2 + random() * 3.8;
 
     dummy.position.set(x, height + vertical * 0.52, z);
     dummy.rotation.set(0, random() * Math.PI * 2, 0);
     dummy.scale.set(
-      radius * (0.8 + random() * 0.42),
+      radius * (0.82 + random() * 0.25),
       vertical,
-      radius * (0.8 + random() * 0.42),
+      radius * (0.82 + random() * 0.25),
     );
     dummy.updateMatrix();
     mesh.setMatrixAt(accepted, dummy.matrix);

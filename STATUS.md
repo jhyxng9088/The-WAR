@@ -8,29 +8,27 @@ Updated: 2026-09-18
 
 ### Active slice
 
-First Stage 1 visual pass:
-- continent-scale terrain field
-- uplifted plateaus / ridges / basins / passes / valleys
-- three river corridors
-- grouped forest masses
-- simple coast / sea
-- deliberately tiny settlement scale references
-- strategic camera retuned for continent scale
-- Stage 0 Apple Maps gesture contract preserved
+Second Stage 1 visual/control pass after real-device review:
+- stronger continent-scale relief
+- high western plateau with escarpment-like edge
+- much taller northern mountain crown
+- separate eastern spine and southern tableland
+- deeper basins and broader river valleys
+- mountain passes cut clearly through ridges
+- tiny forest markers; terrain color carries most forest mass
+- two-finger map rotation direction corrected
+- two-finger parallel vertical drag recognized as camera tilt
+- pinch zoom preserved
 
 ### Stage 1 review gate
 
-This stage is **not complete until the production screen is visually reviewed**.
+Stage 1 is not complete yet.
 
 Review specifically:
-- does the map feel continent-scale rather than miniature?
-- do buildings and forest elements feel small relative to terrain?
-- are several different strategic regions visible?
-- do uplifted landforms / ridges / basins create interesting geography?
-- does the map avoid one dominant center?
-- do Apple Maps-style gestures remain usable on mobile?
+- does the terrain finally feel dramatic and worth fighting over?
+- are plateau / ridge / basin / pass differences immediately visible?
+- do trees read as tiny terrain detail instead of giant props?
+- does two-finger rotation follow the fingers?
+- does two-finger vertical drag reliably change the viewing angle?
+- does pinch zoom still feel correct?
 - is mobile performance acceptable?
-
-## Next action
-
-Deploy this first visual pass to GitHub Pages and review the real screen before further Stage 1 art tuning.
