@@ -58,7 +58,7 @@ export function createWorldScene(): WorldSceneHandle {
   const forest = createForest(field);
   const settlements = createScaleSettlements(field);
 
-  scene.add(water, terrain, ...rivers, forest.mesh, settlements.meshes);
+  scene.add(water, terrain, ...rivers, forest.mesh, ...settlements.meshes);
 
   return {
     scene,
