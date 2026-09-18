@@ -8,21 +8,25 @@ Updated: 2026-09-18
 
 ### Active slice
 
-Third Stage 1 terrain/control pass:
-- rivers use curved Catmull-Rom paths and stronger meanders
-- river valleys follow the same curved paths
-- mountain ridges remain dramatic but use broader falloff
-- plateau transitions are softened
-- terrain mesh resolution increased
-- terrain uses smooth vertex normals instead of faceted flat shading
-- two-finger vertical drag uses a dedicated gesture-mode lock for reliable camera tilt
-- pinch zoom and two-finger rotation remain available
+Terrain-balance and gesture pass based on real screenshot review:
+- remove giant cliff/mesa-like landforms
+- keep mountain chains broad and smooth instead of wall-like
+- increase playable grassland and basin area
+- keep rolling hills and highlands between plains and mountains
+- preserve river valleys and coasts
+- expose explicit terrain kinds for future gameplay:
+  grassland, basin, river valley, forest, rolling hills, plateau, highland, mountain, coast
+- keep terrain colors tied to terrain kind
+- require both touch pointers to move before classifying a 2-finger gesture
+- bias parallel vertical 2-finger movement toward camera tilt
+- make tilt visibly more responsive
 
-### Review gate
+### Stage 1 review gate
 
 Stage 1 remains open until real-device review confirms:
-- rivers feel naturally winding
-- large mountains read as smooth landforms instead of glitched triangles
-- two-finger up/down drag reliably changes camera angle
-- pinch and rotation still behave correctly
+- broad plains exist and mountains no longer dominate the whole map
+- mountain surfaces look like terrain rather than glitched walls
+- terrain categories are visually distinct but still part of one natural world
+- 2-finger vertical drag reliably changes camera angle
+- pinch zoom and 2-finger rotation still work
 - mobile performance remains acceptable

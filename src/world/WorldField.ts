@@ -4,45 +4,23 @@ export const SEA_LEVEL = 0;
 
 export type Point2 = readonly [x: number, z: number];
 
+export type TerrainKind =
+  | "water"
+  | "coast"
+  | "river-valley"
+  | "grassland"
+  | "basin"
+  | "rolling-hills"
+  | "forest"
+  | "plateau"
+  | "highland"
+  | "mountain";
+
 export interface RiverPath {
   readonly points: readonly Point2[];
   readonly sourceWidth: number;
   readonly mouthWidth: number;
 }
-
-const RIVERS: readonly RiverPath[] = [
-  makeRiver(
-    [
-      [-520, -1510], [-400, -1360], [-470, -1190], [-300, -1040],
-      [-360, -850], [-120, -720], [-40, -520], [120, -390],
-      [70, -170], [250, 10], [190, 220], [420, 390],
-      [520, 600], [760, 700], [850, 900], [1110, 1020],
-      [1260, 1200], [1630, 1370],
-    ],
-    8,
-    28,
-  ),
-  makeRiver(
-    [
-      [-1540, -970], [-1430, -840], [-1510, -680], [-1390, -500],
-      [-1490, -330], [-1390, -130], [-1540, 40], [-1480, 250],
-      [-1650, 390], [-1630, 590], [-1840, 720], [-1880, 870],
-      [-2070, 980],
-    ],
-    7,
-    23,
-  ),
-  makeRiver(
-    [
-      [1120, -1080], [1030, -940], [1160, -800], [1080, -630],
-      [1260, -500], [1160, -300], [1320, -120], [1240, 80],
-      [1430, 210], [1390, 390], [1600, 520], [1740, 470],
-      [1900, 620], [2020, 590], [2160, 720],
-    ],
-    7,
-    24,
-  ),
-] as const;
 
 interface RidgeDefinition {
   readonly points: readonly Point2[];
@@ -51,43 +29,86 @@ interface RidgeDefinition {
   readonly passes: readonly Point2[];
 }
 
+const RIVERS: readonly RiverPath[] = [
+  makeRiver(
+    [
+      [-520, -1510], [-410, -1360], [-490, -1190], [-310, -1040],
+      [-370, -860], [-120, -710], [-20, -520], [140, -390],
+      [70, -190], [250, -10], [180, 210], [430, 390],
+      [500, 600], [770, 690], [850, 910], [1120, 1010],
+      [1240, 1210], [1630, 1370],
+    ],
+    7,
+    28,
+  ),
+  makeRiver(
+    [
+      [-1580, -980], [-1440, -850], [-1520, -690], [-1390, -500],
+      [-1500, -330], [-1370, -150], [-1550, 30], [-1460, 240],
+      [-1660, 390], [-1600, 590], [-1850, 720], [-1880, 880],
+      [-2080, 1010],
+    ],
+    6,
+    22,
+  ),
+  makeRiver(
+    [
+      [1130, -1110], [1030, -950], [1170, -800], [1060, -650],
+      [1250, -500], [1140, -300], [1320, -120], [1220, 80],
+      [1450, 210], [1370, 390], [1610, 510], [1740, 470],
+      [1900, 620], [2030, 580], [2180, 720],
+    ],
+    6,
+    23,
+  ),
+  makeRiver(
+    [
+      [-320, 470], [-180, 560], [-250, 680], [-50, 760],
+      [70, 850], [30, 980], [200, 1060], [250, 1190],
+      [430, 1260], [560, 1390],
+    ],
+    5,
+    16,
+  ),
+] as const;
+
 const RIDGES: readonly RidgeDefinition[] = [
   {
     points: [
-      [-2050, -900], [-1710, -1120], [-1320, -1330], [-900, -1440],
-      [-470, -1390], [-40, -1190], [390, -1050], [820, -1080],
-      [1240, -940], [1700, -640],
+      [-2000, -980], [-1640, -1140], [-1270, -1240], [-900, -1290],
+      [-520, -1240], [-120, -1110], [300, -980], [700, -990],
+      [1080, -900], [1450, -720],
     ],
-    width: 215,
-    height: 365,
+    width: 330,
+    height: 205,
     passes: [
-      [-1420, -1280],
-      [-180, -1160],
-      [1080, -980],
+      [-1390, -1210],
+      [-170, -1090],
+      [1020, -910],
     ],
   },
   {
     points: [
-      [-2100, 930], [-1810, 650], [-1500, 500], [-1210, 540],
-      [-960, 720], [-760, 1010], [-610, 1320],
+      [860, -560], [1010, -320], [1080, -50], [1050, 240],
+      [1130, 500], [1290, 760], [1510, 980],
     ],
-    width: 205,
-    height: 250,
+    width: 275,
+    height: 175,
     passes: [
-      [-1580, 540],
-      [-920, 760],
+      [1070, -40],
+      [1220, 620],
     ],
   },
   {
     points: [
-      [760, -620], [980, -400], [1110, -120], [1090, 180],
-      [1160, 480], [1320, 760], [1560, 1040],
+      [-1980, 880], [-1660, 650], [-1370, 560], [-1120, 650],
+      [-900, 860], [-720, 1110],
     ],
-    width: 190,
-    height: 305,
+    width: 300,
+    height: 140,
     passes: [
-      [1080, -70],
-      [1210, 570],
+      [-1510, 600],
+      [-930, 820],
     ],
   },
 ] as const;
@@ -128,67 +149,53 @@ export class WorldField {
     const landMask = this.landMaskAt(x, z);
 
     if (landMask <= 0) {
-      return -30 - Math.min(90, Math.abs(landMask) * 90);
+      return -28 - Math.min(82, Math.abs(landMask) * 82);
     }
 
-    const coastFade = smoothstep(0, 0.18, landMask);
+    const coastFade = smoothstep(0, 0.16, landMask);
 
     let height =
-      20 +
-      Math.sin(x * 0.0018) * 10 +
-      Math.sin(z * 0.0022) * 8 +
-      Math.sin((x - z) * 0.0011) * 7;
+      23 +
+      Math.sin(x * 0.00165) * 7 +
+      Math.sin(z * 0.00195) * 6 +
+      Math.sin((x - z) * 0.00105) * 5;
 
-    // Western fortress plateau: broad high land with a readable escarpment edge.
-    const westPlateau = ellipseInfluence(x, z, -1120, -80, 960, 760);
-    height += smoothstep(0.10, 0.46, westPlateau) * 150;
-    height += smoothstep(0.48, 0.70, westPlateau) * 105;
-
-    // Eastern uplift: lower than the western plateau, but cut by a long spine.
-    const eastUpland = ellipseInfluence(x, z, 1390, 80, 900, 980);
-    height += smoothstep(0.12, 0.52, eastUpland) * 105;
-    height += smoothstep(0.52, 0.76, eastUpland) * 48;
-
-    // Southern tableland creates a separate elevated war theatre.
-    const southTableland = ellipseInfluence(x, z, 240, 1190, 1020, 560);
-    height += smoothstep(0.16, 0.56, southTableland) * 88;
-    height += smoothstep(0.58, 0.78, southTableland) * 42;
-
-    // Broken north-east high country.
-    const northEastShelf = ellipseInfluence(x, z, 1740, -590, 620, 560);
-    height += smoothstep(0.2, 0.58, northEastShelf) * 135;
+    // Broad, smooth uplifts. No stacked hard height bands.
+    height += this.plateauMaskAt(x, z) * 82;
+    height += gaussianEllipse(x, z, 1350, 80, 900, 980) * 58;
+    height += gaussianEllipse(x, z, 200, 1190, 1080, 590) * 42;
+    height += gaussianEllipse(x, z, 1740, -590, 690, 580) * 48;
 
     for (const ridge of RIDGES) {
       height += ridgeContribution(x, z, ridge);
 
       for (const [passX, passZ] of ridge.passes) {
         height -=
-          gaussianDistance(x, z, passX, passZ, ridge.width * 0.95) *
+          gaussianDistance(x, z, passX, passZ, ridge.width * 0.78) *
           ridge.height *
-          0.66;
+          0.52;
       }
     }
 
-    // Large basins keep the map from becoming one continuous mountain mass.
-    height -= ellipseInfluence(x, z, 220, 150, 760, 620) * 118;
-    height -= ellipseInfluence(x, z, -260, 820, 680, 460) * 54;
-    height -= ellipseInfluence(x, z, 1850, 520, 440, 400) * 42;
+    // Large playable lowlands and basins keep mountains from dominating.
+    height -= this.basinMaskAt(x, z) * 24;
+    height -= gaussianEllipse(x, z, 900, 1050, 900, 520) * 18;
+    height -= gaussianEllipse(x, z, -1650, 250, 700, 520) * 12;
 
-    // Rivers carve broad strategic valleys, not tiny decorative grooves.
     const riverDistance = this.distanceToRiver(x, z);
-    height -= Math.exp(-Math.pow(riverDistance / 82, 2)) * 62;
-    height -= Math.exp(-Math.pow(riverDistance / 205, 2)) * 28;
+    height -= Math.exp(-Math.pow(riverDistance / 95, 2)) * 22;
+    height -= Math.exp(-Math.pow(riverDistance / 250, 2)) * 10;
 
-    // Small-scale rolling relief only; major forms above remain dominant.
+    // Gentle local relief only.
     height +=
-      Math.sin(x * 0.0052 + z * 0.0012) * 5 +
-      Math.sin(z * 0.0047 - x * 0.0018) * 4;
+      Math.sin(x * 0.0042 + z * 0.0011) * 3.2 +
+      Math.sin(z * 0.0039 - x * 0.0015) * 2.6;
 
-    return Math.max(5, Math.min(620, height * coastFade + 4));
+    return Math.max(4, Math.min(380, height * coastFade + 4));
   }
 
   public slopeAt(x: number, z: number): number {
-    const step = 28;
+    const step = 34;
     const dx = this.heightAt(x + step, z) - this.heightAt(x - step, z);
     const dz = this.heightAt(x, z + step) - this.heightAt(x, z - step);
     return Math.hypot(dx, dz) / (step * 2);
@@ -208,24 +215,61 @@ export class WorldField {
     if (this.landMaskAt(x, z) <= 0) return 0;
 
     const height = this.heightAt(x, z);
-    if (height > 330) return 0;
+    if (height > 245) return 0;
 
     let density = 0;
-    density += ellipseInfluence(x, z, -1650, -160, 760, 650) * 0.82;
-    density += ellipseInfluence(x, z, -760, 760, 700, 500) * 0.72;
-    density += ellipseInfluence(x, z, 690, -430, 650, 570) * 0.6;
-    density += ellipseInfluence(x, z, 1640, 760, 620, 500) * 0.7;
-    density += ellipseInfluence(x, z, 180, 1280, 660, 330) * 0.42;
+    density += gaussianEllipse(x, z, -1650, -140, 760, 650) * 0.74;
+    density += gaussianEllipse(x, z, -760, 760, 700, 500) * 0.68;
+    density += gaussianEllipse(x, z, 650, -420, 650, 570) * 0.56;
+    density += gaussianEllipse(x, z, 1640, 760, 620, 500) * 0.66;
+    density += gaussianEllipse(x, z, 180, 1280, 660, 330) * 0.38;
 
     density +=
-      Math.sin(x * 0.0065 + z * 0.0026) * 0.065 +
-      Math.sin(z * 0.0082 - x * 0.0018) * 0.05;
+      Math.sin(x * 0.006 + z * 0.0025) * 0.055 +
+      Math.sin(z * 0.0078 - x * 0.0017) * 0.045;
 
     const riverMoisture =
-      Math.exp(-Math.pow(this.distanceToRiver(x, z) / 340, 2)) * 0.1;
-    const elevationPenalty = smoothstep(220, 330, height) * 0.65;
+      Math.exp(-Math.pow(this.distanceToRiver(x, z) / 360, 2)) * 0.08;
+    const elevationPenalty = smoothstep(165, 245, height) * 0.56;
 
     return clamp01(density + riverMoisture - elevationPenalty);
+  }
+
+  public terrainKindAt(x: number, z: number): TerrainKind {
+    const landMask = this.landMaskAt(x, z);
+    if (landMask <= 0) return "water";
+
+    const height = this.heightAt(x, z);
+    const slope = this.slopeAt(x, z);
+    const riverDistance = this.distanceToRiver(x, z);
+    const forest = this.forestDensityAt(x, z);
+
+    if (landMask < 0.12 && height < 34) return "coast";
+    if (riverDistance < 175 && height < 95) return "river-valley";
+    if (height > 220 || slope > 0.62) return "mountain";
+    if (
+      this.plateauMaskAt(x, z) > 0.45 &&
+      height > 88 &&
+      slope < 0.34
+    ) {
+      return "plateau";
+    }
+    if (this.basinMaskAt(x, z) > 0.46 && height < 58) return "basin";
+    if (forest > 0.5) return "forest";
+    if (height > 125) return "highland";
+    if (height > 62 || slope > 0.22) return "rolling-hills";
+    return "grassland";
+  }
+
+  private plateauMaskAt(x: number, z: number): number {
+    return gaussianEllipse(x, z, -1120, -80, 980, 780);
+  }
+
+  private basinMaskAt(x: number, z: number): number {
+    return Math.max(
+      gaussianEllipse(x, z, 180, 220, 1080, 780),
+      gaussianEllipse(x, z, -250, 860, 720, 500) * 0.75,
+    );
   }
 }
 
@@ -237,9 +281,9 @@ function ridgeContribution(
   const distance = distanceToPolyline(x, z, ridge.points);
   const core = Math.exp(-Math.pow(distance / ridge.width, 2));
   const shoulder =
-    Math.exp(-Math.pow(distance / (ridge.width * 1.8), 2)) * 0.34;
+    Math.exp(-Math.pow(distance / (ridge.width * 1.9), 2)) * 0.3;
   const foothill =
-    Math.exp(-Math.pow(distance / (ridge.width * 3.0), 2)) * 0.16;
+    Math.exp(-Math.pow(distance / (ridge.width * 3.1), 2)) * 0.12;
 
   return ridge.height * (core + shoulder + foothill);
 }
@@ -296,6 +340,19 @@ function ellipseInfluence(
   return clamp01(1 - (dx * dx + dz * dz));
 }
 
+function gaussianEllipse(
+  x: number,
+  z: number,
+  centerX: number,
+  centerZ: number,
+  radiusX: number,
+  radiusZ: number,
+): number {
+  const dx = (x - centerX) / radiusX;
+  const dz = (z - centerZ) / radiusZ;
+  return Math.exp(-(dx * dx + dz * dz) * 1.45);
+}
+
 function gaussianDistance(
   x: number,
   z: number,
@@ -322,7 +379,7 @@ function makeRiver(
   mouthWidth: number,
 ): RiverPath {
   return {
-    points: sampleCatmullRom(controls, 3),
+    points: sampleCatmullRom(controls, 5),
     sourceWidth,
     mouthWidth,
   };

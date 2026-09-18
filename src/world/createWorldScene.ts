@@ -34,8 +34,8 @@ export interface WorldSceneHandle {
   dispose(): void;
 }
 
-const TERRAIN_SEGMENTS_X = 220;
-const TERRAIN_SEGMENTS_Z = 160;
+const TERRAIN_SEGMENTS_X = 240;
+const TERRAIN_SEGMENTS_Z = 176;
 const FOREST_INSTANCE_COUNT = 460;
 
 export function createWorldScene(): WorldSceneHandle {
@@ -146,47 +146,38 @@ function terrainColor(
   z: number,
   height: number,
 ): Color {
-  if (height < SEA_LEVEL) {
-    return new Color(0x395f68);
-  }
+  const kind = field.terrainKindAt(x, z);
 
+  const palette: Record<ReturnType<WorldField["terrainKindAt"]>, number> = {
+    water: 0x395f68,
+    coast: 0xb9aa79,
+    "river-valley": 0x94aa72,
+    grassland: 0x91a16e,
+    basin: 0x9aa979,
+    "rolling-hills": 0x7f9067,
+    forest: 0x5d7553,
+    plateau: 0x85876b,
+    highland: 0x807f69,
+    mountain: 0x77736c,
+  };
+
+  const color = new Color(palette[kind]);
   const slope = field.slopeAt(x, z);
-  const forest = field.forestDensityAt(x, z);
-  const riverDistance = field.distanceToRiver(x, z);
 
-  let color: Color;
-
-  if (height < 14) {
-    color = new Color(0xb8aa7b);
-  } else if (height < 70) {
-    color = new Color(0x82936d);
-  } else if (height < 155) {
-    color = new Color(0x748367);
-  } else if (height < 280) {
-    color = new Color(0x787a67);
-  } else if (height < 430) {
-    color = new Color(0x777269);
-  } else {
-    color = new Color(0x6e6a66);
+  if (kind === "mountain") {
+    color.lerp(new Color(0x696761), Math.min(0.34, slope * 0.24));
   }
 
-  if (riverDistance < 150 && height < 105) {
-    color.lerp(new Color(0x91a873), 0.28);
-  }
-
-  if (forest > 0.46) {
-    color.lerp(new Color(0x536a51), Math.min(0.32, forest * 0.28));
-  }
-
-  if (slope > 0.78) {
-    color.lerp(new Color(0x6d6c65), Math.min(0.55, (slope - 0.78) * 0.7));
+  if (kind === "river-valley") {
+    color.lerp(new Color(0xa2b77e), 0.18);
   }
 
   const regionalVariation =
-    Math.sin(x * 0.0017 + z * 0.0009) * 0.025 +
-    Math.sin(z * 0.0021 - x * 0.0007) * 0.018;
+    Math.sin(x * 0.0015 + z * 0.0008) * 0.018 +
+    Math.sin(z * 0.0019 - x * 0.0006) * 0.014;
 
-  color.offsetHSL(0, regionalVariation * 0.25, regionalVariation);
+  const elevationShade = Math.min(0.035, Math.max(-0.02, height / 10000));
+  color.offsetHSL(0, regionalVariation * 0.18, regionalVariation + elevationShade);
   return color;
 }
 
