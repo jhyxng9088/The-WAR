@@ -13,6 +13,7 @@ import {
 
 type TreeSpecies = 'conifer' | 'deciduous';
 type TreeLod = 'low' | 'mid' | 'high';
+type TreeDisplayMode = 'strategic' | TreeLod;
 
 interface TreePoint {
   readonly x: number;
@@ -38,6 +39,11 @@ interface TreeAssetSet {
   readonly deciduous: Record<TreeLod, TreeTemplate>;
 }
 
+interface ForestMass {
+  readonly mesh: THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
+  readonly material: THREE.ShaderMaterial;
+}
+
 export interface VegetationController {
   update(camera: THREE.Camera): void;
   dispose(): void;
@@ -47,6 +53,7 @@ const TREE_SPACING = 1.82;
 const TREE_CHUNK_SIZE = 58;
 const HIGH_LOD_MAX_CAMERA_Y = 78;
 const MID_LOD_MAX_CAMERA_Y = 148;
+const STRATEGIC_MASS_ONLY_CAMERA_Y = 185;
 const TREE_MODEL_HEIGHT: Record<TreeSpecies, number> = {
   conifer: 0.88,
   deciduous: 0.82,
@@ -73,7 +80,8 @@ export async function addVegetation(scene: THREE.Scene): Promise<VegetationContr
   lodRoots.mid.name = 'trees-mid';
   lodRoots.high.name = 'trees-high';
 
-  root.add(lodRoots.low, lodRoots.mid, lodRoots.high);
+  const forestMass = createForestMass();
+  root.add(forestMass.mesh, lodRoots.low, lodRoots.mid, lodRoots.high);
   scene.add(root);
 
   const species: readonly TreeSpecies[] = ['conifer', 'deciduous'];
@@ -92,23 +100,35 @@ export async function addVegetation(scene: THREE.Scene): Promise<VegetationContr
     }
   }
 
-  let activeLod: TreeLod | null = null;
+  let activeMode: TreeDisplayMode | null = null;
 
   const update = (camera: THREE.Camera): void => {
     const cameraY = camera.position.y;
-    const nextLod: TreeLod =
-      cameraY <= HIGH_LOD_MAX_CAMERA_Y
-        ? 'high'
-        : cameraY <= MID_LOD_MAX_CAMERA_Y
-          ? 'mid'
-          : 'low';
+    const nextMode: TreeDisplayMode =
+      cameraY > STRATEGIC_MASS_ONLY_CAMERA_Y
+        ? 'strategic'
+        : cameraY > MID_LOD_MAX_CAMERA_Y
+          ? 'low'
+          : cameraY > HIGH_LOD_MAX_CAMERA_Y
+            ? 'mid'
+            : 'high';
 
-    if (nextLod === activeLod) return;
-    activeLod = nextLod;
+    if (nextMode === activeMode) return;
+    activeMode = nextMode;
 
-    lodRoots.low.visible = nextLod === 'low';
-    lodRoots.mid.visible = nextLod === 'mid';
-    lodRoots.high.visible = nextLod === 'high';
+    lodRoots.low.visible = nextMode === 'low';
+    lodRoots.mid.visible = nextMode === 'mid';
+    lodRoots.high.visible = nextMode === 'high';
+
+    const forestOpacity =
+      nextMode === 'strategic'
+        ? 0.78
+        : nextMode === 'low'
+          ? 0.52
+          : nextMode === 'mid'
+            ? 0.34
+            : 0.18;
+    forestMass.material.uniforms.forestOpacity.value = forestOpacity;
   };
 
   return {
@@ -173,6 +193,170 @@ function isNearSettlement(x: number, z: number): boolean {
     if (dx * dx + dz * dz < SETTLEMENT_CLEAR_RADIUS_SQ) return true;
   }
   return false;
+}
+
+function createForestMass(): ForestMass {
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const alphas: number[] = [];
+  const indices: number[] = [];
+  const segments = 18;
+  const step = 13.5;
+
+  for (let gx = -WORLD_HALF_WIDTH + step; gx < WORLD_HALF_WIDTH - step; gx += step) {
+    for (let gz = -WORLD_HALF_DEPTH + step; gz < WORLD_HALF_DEPTH - step; gz += step) {
+      const cx = gx + (deterministic01(gx, gz, 131) - 0.5) * step * 0.78;
+      const cz = gz + (deterministic01(gx, gz, 137) - 0.5) * step * 0.78;
+      if (!isLandAt(cx, cz) || isNearSettlement(cx, cz)) continue;
+
+      const density = forestDensityAt(cx, cz);
+      const cluster = forestClusterAt(cx, cz);
+      const strength =
+        smoothstep01(0.49, 0.80, density)
+        * smoothstep01(0.40, 0.70, cluster + density * 0.12);
+      if (strength < 0.12) continue;
+
+      const mountain = mountainStrengthAt(cx, cz);
+      const radiusX = 5.8 + strength * 10.8 + deterministic01(cx, cz, 139) * 3.0;
+      const radiusZ = 5.4 + strength * 9.4 + deterministic01(cx, cz, 149) * 3.2;
+      const baseColor = new THREE.Color(mountain > 0.35 ? 0x263b2f : 0x314b31);
+      const colorJitter = deterministic01(cx, cz, 151);
+      baseColor.offsetHSL(
+        (colorJitter - 0.5) * 0.018,
+        (colorJitter - 0.5) * 0.05,
+        (colorJitter - 0.5) * 0.045,
+      );
+
+      appendForestPatch(
+        positions,
+        colors,
+        alphas,
+        indices,
+        cx,
+        cz,
+        radiusX,
+        radiusZ,
+        strength,
+        baseColor,
+        segments,
+      );
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setAttribute('forestAlpha', new THREE.Float32BufferAttribute(alphas, 1));
+  geometry.setIndex(indices);
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+
+  const material = new THREE.ShaderMaterial({
+    fog: true,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    uniforms: {
+      forestOpacity: { value: 0.78 },
+    },
+    vertexShader: `
+      #include <common>
+      #include <fog_pars_vertex>
+
+      attribute vec3 color;
+      attribute float forestAlpha;
+
+      varying vec3 vForestColor;
+      varying float vForestAlpha;
+
+      void main() {
+        vForestColor = color;
+        vForestAlpha = forestAlpha;
+        vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
+        gl_Position = projectionMatrix * mvPosition;
+        #include <fog_vertex>
+      }
+    `,
+    fragmentShader: `
+      #include <common>
+      #include <fog_pars_fragment>
+
+      uniform float forestOpacity;
+      varying vec3 vForestColor;
+      varying float vForestAlpha;
+
+      void main() {
+        float alpha = vForestAlpha * forestOpacity;
+        if ( alpha < 0.008 ) discard;
+        gl_FragColor = vec4( vForestColor, alpha );
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+        #include <fog_fragment>
+      }
+    `,
+  });
+  material.polygonOffset = true;
+  material.polygonOffsetFactor = -2;
+  material.polygonOffsetUnits = -2;
+
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = 'strategic-forest-mass';
+  mesh.renderOrder = 1.6;
+  mesh.frustumCulled = true;
+
+  return { mesh, material };
+}
+
+function appendForestPatch(
+  positions: number[],
+  colors: number[],
+  alphas: number[],
+  indices: number[],
+  cx: number,
+  cz: number,
+  radiusX: number,
+  radiusZ: number,
+  strength: number,
+  color: THREE.Color,
+  segments: number,
+): void {
+  const base = positions.length / 3;
+  const centerHeight = terrainHeight(cx, cz) + 0.045;
+  positions.push(cx, centerHeight, cz);
+  colors.push(color.r, color.g, color.b);
+  alphas.push(0.46 + strength * 0.18);
+
+  const innerStart = base + 1;
+  const outerStart = innerStart + segments;
+
+  for (let ring = 0; ring < 2; ring += 1) {
+    const ringScale = ring === 0 ? 0.58 : 1.0;
+    for (let i = 0; i < segments; i += 1) {
+      const angle = (i / segments) * Math.PI * 2;
+      const irregularity =
+        0.80
+        + deterministic01(cx + i * 1.73, cz - i * 0.91, 163 + ring * 17) * 0.34;
+      const x = cx + Math.cos(angle) * radiusX * ringScale * irregularity;
+      const z = cz + Math.sin(angle) * radiusZ * ringScale * irregularity;
+      const y = terrainHeight(x, z) + 0.044;
+
+      positions.push(x, y, z);
+      colors.push(color.r, color.g, color.b);
+      alphas.push(ring === 0 ? 0.38 + strength * 0.14 : 0.0);
+    }
+  }
+
+  for (let i = 0; i < segments; i += 1) {
+    const next = (i + 1) % segments;
+    const innerA = innerStart + i;
+    const innerB = innerStart + next;
+    const outerA = outerStart + i;
+    const outerB = outerStart + next;
+
+    indices.push(base, innerA, innerB);
+    indices.push(innerA, outerA, outerB);
+    indices.push(innerA, outerB, innerB);
+  }
 }
 
 function forestClusterAt(x: number, z: number): number {
