@@ -6,61 +6,59 @@ Updated: 2026-09-19
 
 **Stage 2 — Territory expansion — IN PROGRESS**
 
-## Gameplay-first world override
+## Stage 2-F active slice
 
-Detailed terrain remains paused. The active world is a large flat gameplay sandbox while territory, economy, war, and AI are built.
+Real-device review exposed that nation fill geometry existed but was not visible from the strategy camera because the generated triangles were wound toward -Y and were backface-culled.
 
-## Stage 2-E active slice
+Fixed in this pass:
+- canonical polygon fill triangulation now faces +Y
+- nation interiors are visibly tinted with translucent nation color
+- base nation tint is intentionally restrained so the ground remains visible
+- compact national cores receive only a subtle extra tint
+- national borders are slightly thinner and less dominant
+- selecting a nation uses a subtle whole-nation translucent highlight
+- active expansion target uses a stronger translucent target fill
+- vector border rendering from Stage 2-D remains unchanged
+- compact AI growth from Stage 2-E remains unchanged
 
-This pass is a strict readability + architecture pass based on real-device review.
+## Visual target
 
-Implemented:
-- national territory fill is much more visible than the border
-- national core cells receive a subtle second fill layer
-- neutral ground is a more muted green so nation colors read clearly
-- borders are thinner, darker, and subordinate to the territory mass
-- shared nation borders use a restrained map-ink tone rather than bright white
-- visual cell irregularity is increased without changing simulation adjacency
-- selection no longer outlines a single hidden cell
-- selecting owned/foreign land gently highlights the entire nation
-- neutral selection relies on HUD feedback; active expansion highlights only the actual claim target
-- starting territory cores are larger
-- rival AI expansion is slower and strongly biased toward compact growth
-- thin AI tentacles are penalized
-- player expansion, rival expansion, capital markers, HUD, camera, and gesture behavior are preserved
+The map should read in this order:
+1. colored national land mass
+2. national border
+3. capital marker
+4. selection / active expansion feedback
 
-## Canonical ownership audit
+The internal cell topology must remain visually hidden except for the temporary active claim target.
 
-No new runtime owner was introduced.
+## Canonical ownership
 
-Canonical responsibility remains:
-- TerritoryState: ownership, adjacency, expansion rules, AI expansion, hit testing
-- TerritoryView: territory visual derivation only
-- TerritoryHud: territory UI only
-- AppRuntime: orchestration only
-- MapGestureController: pointer gesture ownership
-- StrategyCameraRig: camera response
-- GameLoop: the single frame loop
+Unchanged:
+- TerritoryState owns ownership, adjacency, expansion rules, AI and hit testing
+- TerritoryView derives all territory visuals
+- TerritoryHud owns territory UI
+- AppRuntime only wires systems together
+- MapGestureController owns pointer gestures
+- StrategyCameraRig owns camera response
+- GameLoop remains the single frame loop
 
-No patch file, DOM workaround, duplicate listener, duplicate game loop, duplicate territory state, or visual source-of-truth was added in this pass.
+No patch file, duplicate state, duplicate render owner, fake click, extra listener owner, or DOM gameplay workaround was introduced.
 
 ## Stage 2 next work
 
-After device review:
-- tune fill/core strength and border weight if needed
-- introduce region grouping above hidden cells
+After this fill is visually confirmed:
+- introduce Region grouping above hidden cells
 - define expansion pressure/cost
-- decide the final player expansion command style
-- finish Stage 2 before Stage 3 resources
+- refine expansion command UX
+- finish Stage 2 territory rules before Stage 3 resources
 
 ## Review gate
 
 Confirm on device:
-- countries read as colored land masses before their borders
-- borders stay crisp and stable during camera movement
-- rival growth produces compact states rather than long tendrils
-- selecting national land does not expose the hidden grid
-- expansion still works exactly as before
-- rival AI still expands
-- camera/HUD/gesture behavior is unchanged
-- phone performance remains acceptable
+- every country has a clearly visible but translucent interior color
+- underlying ground is still visible through national color
+- border is secondary to the colored land mass
+- whole-nation selection feels subtle
+- expansion target is visible without exposing the general grid
+- camera movement does not flicker
+- player and rival expansion behavior is unchanged

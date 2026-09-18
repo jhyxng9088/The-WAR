@@ -54,7 +54,7 @@ export class AppRuntime {
       "STAGE 2 · TERRITORY",
     );
     this.diagnostics.setContext(
-      "Stage 2-E · filled nations · compact growth · unified owners",
+      "Stage 2-F · translucent nation fill · stable map readability",
     );
 
     this.viewport = new ViewportController(
