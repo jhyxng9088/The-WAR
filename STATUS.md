@@ -6,69 +6,58 @@ Updated: 2026-09-19
 
 **Stage 2 — Territory expansion — IN PROGRESS**
 
-## Stage 2-F finishing — restrained border softening
+## Stage 2-H — visible border polish + Region readout
 
-Implemented:
-- simulation cells and ownership rules are unchanged
-- nation boundary loops are derived from canonical owned cells
-- only the visual nation outline receives one mild smoothing pass
-- smoothing strength is intentionally limited to 0.14
-- translucent nation fill now follows the same softened outer loop
-- whole-nation selection uses the same softened shape
-- active claim target remains the exact hidden cell so command feedback stays precise
-- no additional render loop, state owner, listener, or patch file was introduced
+This pass responds to device review that the previous 0.14 averaging pass was technically present but visually too subtle.
 
-The goal is not a round blob. The goal is to remove the last obvious polygon-step feeling while preserving the current irregular strategic-map character.
+### Border / territory presentation
 
-## Stage 2-G — Region hierarchy foundation
+- simulation cells remain unchanged and hidden
+- national outer loops are still derived from canonical TerritoryState ownership
+- the old single-point average softening is replaced with one restrained corner-cut pass
+- corner cut is 0.18: enough to visibly reduce hard stair-step corners without turning states into round blobs
+- loop area is compensated after rounding so countries do not visibly shrink
+- translucent national fill, whole-nation selection and border all use the same display loop
+- a wider very-low-opacity border underlay sits below the crisp 1 px line to remove the harsh cut-out / sticker feeling
+- no texture rasterization is reintroduced, so borders remain resolution-independent
 
-Implemented immediately after 2-F:
-- hidden territory cells are grouped into 10 × 8 = 80 meso-scale Regions
-- each Region contains 8 × 7 hidden cells
-- Region topology has one canonical owner: `RegionIndex`
-- dynamic Region control is derived live from `TerritoryState`; Region code stores no second ownership map
-- Region control summary exposes leading nation, leading share, neutral cell count, and contested state
-- selecting land shows its Region label in the HUD
-- existing player expansion, rival expansion, capitals, camera, gestures, and HUD structure are preserved
+### Region layer
 
-This Region layer is infrastructure for later:
-- population
-- resources
-- taxation
-- stability / public support
-- defense
-- supply
-- occupation pressure
-
-Those systems are **not** added yet.
+- RegionIndex remains the only static cell → Region topology owner
+- Region control remains derived from TerritoryState ownership
+- HUD now shows Region label, leading nation, leading share, and contested status when land is selected
+- no second mutable Region ownership state exists
 
 ## Canonical ownership
 
+Unchanged:
 - TerritoryState: dynamic ownership, adjacency, expansion, AI, hit testing, Region control derivation
-- RegionIndex: static cell → Region topology only
-- TerritoryView: derived visuals and visual smoothing only
+- RegionIndex: static Region topology only
+- TerritoryView: derived visual boundary / fill only
 - TerritoryHud: UI only
 - AppRuntime: orchestration only
 - MapGestureController: pointer gestures
 - StrategyCameraRig: camera response
 - GameLoop: single frame loop
 
+No patch file, fake click, duplicate state owner, duplicate input listener, duplicate timer, or second render loop was added.
+
 ## Stage 2 next work
 
 After device review:
-- tune the 0.14 border softening only if it is still visibly too angular or too soft
+- tune corner cut only if it is still too angular or has become too soft
 - define expansion pressure / cost
 - refine final expansion command UX
-- finish Stage 2 territory rules before Stage 3 resources
+- then close Stage 2 and move into Stage 3 resources / population
 
 ## Review gate
 
-Confirm on device:
-- nation boundaries are only slightly softer, not rounded into blobs
-- translucent fill still aligns with the visible border
-- national border remains stable during pan / zoom / rotation
-- selecting land shows a Region label without exposing the hidden cell grid
-- player expansion is unchanged
-- rival expansion is unchanged
-- camera and gesture behavior are unchanged
-- mobile performance remains acceptable
+Confirm:
+- border shape is visibly smoother than Stage 2-G
+- states still retain irregular strategic silhouettes
+- translucent fill exactly follows the visible outline
+- border remains crisp while zooming / rotating / panning
+- Region readout updates correctly on selection
+- player and rival expansion behavior is unchanged
+- camera / gesture behavior is unchanged
+- phone performance remains acceptable
