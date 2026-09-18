@@ -40,6 +40,7 @@ export class TerritoryHud {
     const expansion = state.expansion;
     const owned = state.ownedCount(state.playerNation);
     const frontier = state.frontierCells().length;
+    const region = selected ? state.regionForCell(selected) : null;
 
     const signature = [
       state.version,
@@ -75,22 +76,30 @@ export class TerritoryHud {
       return;
     }
 
+    const regionSuffix = region
+      ? " · Region " + region.label
+      : "";
+
     if (selected.owner === state.playerNation) {
       this.selectionLine.textContent = state.isCapital(selected)
-        ? "Selected: your capital"
-        : "Selected: your territory";
+        ? "Selected: your capital" + regionSuffix
+        : "Selected: your territory" + regionSuffix;
       return;
     }
 
     if (selected.owner) {
       this.selectionLine.textContent =
-        "Selected: " + state.nation(selected.owner).name;
+        "Selected: " +
+        state.nation(selected.owner).name +
+        regionSuffix;
       return;
     }
 
-    this.selectionLine.textContent = state.isPlayerFrontier(selected)
-      ? "Selected: neutral frontier"
-      : "Selected: distant neutral land";
+    this.selectionLine.textContent =
+      (state.isPlayerFrontier(selected)
+        ? "Selected: neutral frontier"
+        : "Selected: distant neutral land") +
+      regionSuffix;
   }
 
   public dispose(): void {
