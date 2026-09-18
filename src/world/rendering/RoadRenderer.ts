@@ -3,10 +3,12 @@ import { createRibbonGeometry, type RibbonSample } from '../../rendering/geometr
 import { terrainHeight } from '../WorldField';
 import { STRATEGIC_ROADS, type StrategicRoad } from '../StrategicWorld';
 
-const ROAD_MATERIAL = new THREE.MeshBasicMaterial({
-  color: 0x8e8065,
+const ROAD_MATERIAL = new THREE.MeshStandardMaterial({
+  color: 0xc5a96f,
+  roughness: 1,
+  metalness: 0,
   transparent: true,
-  opacity: 0.58,
+  opacity: 0.94,
   depthWrite: false,
 });
 
@@ -34,17 +36,19 @@ function addRoad(scene: THREE.Scene, road: StrategicRoad): void {
   );
 
   const samples: RibbonSample[] = [];
-  const count = 42;
+  const count = Math.max(42, Math.ceil(length / 5));
   for (let i = 0; i <= count; i += 1) {
     const t = i / count;
     const point = curve.getPoint(t);
     samples.push({
-      position: new THREE.Vector3(point.x, terrainHeight(point.x, point.z) + 0.072, point.z),
-      width: THREE.MathUtils.lerp(0.15, 0.1, Math.abs(t - 0.5) * 2),
+      position: new THREE.Vector3(point.x, terrainHeight(point.x, point.z) + 0.18, point.z),
+      width: THREE.MathUtils.lerp(1.05, 0.78, Math.abs(t - 0.5) * 2),
     });
   }
 
   const mesh = new THREE.Mesh(createRibbonGeometry(samples), ROAD_MATERIAL);
+  mesh.name = 'stylized-road';
   mesh.renderOrder = 4;
+  mesh.receiveShadow = true;
   scene.add(mesh);
 }
