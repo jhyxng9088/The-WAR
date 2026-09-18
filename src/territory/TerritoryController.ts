@@ -85,11 +85,8 @@ export class TerritoryController {
     const dt = Math.max(0, Math.min(MAX_FRAME_STEP, deltaSeconds));
     if (dt <= 0 || this.expansionByNation.size === 0) return;
 
-    let selectionChanged = false;
     for (const [nationId, order] of [...this.expansionByNation]) {
       order.elapsedSeconds += dt;
-      selectionChanged = selectionChanged || order.cellId === this.selectedCellId;
-
       if (order.elapsedSeconds < order.durationSeconds) continue;
 
       const cell = this.cellById.get(order.cellId);
@@ -98,10 +95,8 @@ export class TerritoryController {
         this.stateRevision += 1;
       }
       this.expansionByNation.delete(nationId);
-      selectionChanged = selectionChanged || order.cellId === this.selectedCellId;
+      if (order.cellId === this.selectedCellId) this.selectionRevision += 1;
     }
-
-    if (selectionChanged) this.selectionRevision += 1;
   }
 
   getCells(): readonly TerritoryCellView[] {
@@ -110,6 +105,10 @@ export class TerritoryController {
 
   getCell(q: number, r: number): TerritoryCellView | null {
     return this.cellById.get(axialKey(q, r)) ?? null;
+  }
+
+  getCellById(id: string): TerritoryCellView | null {
+    return this.cellById.get(id) ?? null;
   }
 
   getNation(id: TerritoryOwnerId): NationDefinition | null {
