@@ -1,32 +1,53 @@
 # THE WAR — Development Status
 
-Updated: 2026-09-18
+Updated: 2026-09-19
 
 ## Current stage
 
-**Stage 1 — World + locked low-poly visual baseline — IN PROGRESS**
+**Stage 2 — Territory expansion — IN PROGRESS**
 
-### Active slice
+## Stage 1 decision
 
-Terrain-balance and gesture pass based on real screenshot review:
-- remove giant cliff/mesa-like landforms
-- keep mountain chains broad and smooth instead of wall-like
-- increase playable grassland and basin area
-- keep rolling hills and highlands between plains and mountains
-- preserve river valleys and coasts
-- expose explicit terrain kinds for future gameplay:
-  grassland, basin, river valley, forest, rolling hills, plateau, highland, mountain, coast
-- keep terrain colors tied to terrain kind
-- require both touch pointers to move before classifying a 2-finger gesture
-- bias parallel vertical 2-finger movement toward camera tilt
-- make tilt visibly more responsive
+The detailed terrain experiment is intentionally paused.
 
-### Stage 1 review gate
+The active gameplay sandbox is now:
+- continent-scale flat green ground
+- no mountains, rivers, forests, terrain props, or terrain-detail rendering
+- camera and mobile gesture navigation preserved
+- world/data ownership remains isolated so terrain can return later without rewriting gameplay systems
 
-Stage 1 remains open until real-device review confirms:
-- broad plains exist and mountains no longer dominate the whole map
-- mountain surfaces look like terrain rather than glitched walls
-- terrain categories are visually distinct but still part of one natural world
-- 2-finger vertical drag reliably changes camera angle
-- pinch zoom and 2-finger rotation still work
-- mobile performance remains acceptable
+This is deliberate. Gameplay systems are now the priority.
+
+## Active Stage 2 slice
+
+Implemented:
+- internal neutral territory grid
+- one player nation
+- starting capital
+- small starting territory
+- tap selection
+- adjacency validation
+- timed expansion into adjacent neutral territory
+- territory ownership tint
+- outer national border rendering
+- expansion progress feedback
+- territory rendering derived from territory state rather than stored in render meshes
+
+## Stage 2 next work
+
+After real-device review:
+- improve border silhouette so the internal cell structure is less visible
+- add cleaner selection/command feedback
+- decide expansion cost/cooldown rules
+- add additional nations/start locations
+- prepare region data for later resources and warfare
+
+## Review gate
+
+Confirm on device:
+- the flat sandbox loads cleanly
+- tap selects territory
+- only adjacent neutral territory can expand
+- expansion progress completes and moves the border
+- pan/zoom/rotate/tilt still work
+- no obvious mobile performance regression

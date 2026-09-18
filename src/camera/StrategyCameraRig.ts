@@ -67,7 +67,7 @@ export class StrategyCameraRig {
     const safeScale = MathUtils.clamp(scale, 0.5, 2);
     const anchorBefore =
       clientX !== undefined && clientY !== undefined && rect
-        ? this.groundPointFromClient(clientX, clientY, rect)
+        ? this.screenToGround(clientX, clientY, rect)
         : null;
 
     this.distance = MathUtils.clamp(
@@ -83,7 +83,7 @@ export class StrategyCameraRig {
       clientY !== undefined &&
       rect
     ) {
-      const anchorAfter = this.groundPointFromClient(
+      const anchorAfter = this.screenToGround(
         clientX,
         clientY,
         rect,
@@ -113,7 +113,7 @@ export class StrategyCameraRig {
     this.applyPose();
   }
 
-  private groundPointFromClient(
+  public screenToGround(
     clientX: number,
     clientY: number,
     rect: DOMRect,
