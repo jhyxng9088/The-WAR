@@ -31,9 +31,9 @@ export const TERRITORY_GRID_DEPTH =
 const GRID_MIN_X = -TERRITORY_GRID_WIDTH / 2;
 const GRID_MIN_Z = -TERRITORY_GRID_DEPTH / 2;
 const EXPANSION_DURATION_SECONDS = 1.0;
-const INITIAL_RADIUS = 2.55;
-const VISUAL_JITTER = 0.16;
-const EDGE_BEND = 0.12;
+const INITIAL_RADIUS = 3.15;
+const VISUAL_JITTER = 0.21;
+const EDGE_BEND = 0.16;
 
 export class TerritoryState {
   public readonly cells: TerritoryCell[] = [];
@@ -74,7 +74,7 @@ export class TerritoryState {
 
       if (!nation.isPlayer) {
         this.aiElapsed.set(nation.id, aiIndex * 0.42);
-        this.aiIntervals.set(nation.id, 1.75 + aiIndex * 0.17);
+        this.aiIntervals.set(nation.id, 2.35 + aiIndex * 0.22);
         aiIndex += 1;
       }
     }
@@ -343,6 +343,12 @@ export class TerritoryState {
         center.x - capitalCenter.x,
         center.z - capitalCenter.z,
       );
+      const sameOwnerNeighbors = this.neighbors(cell).filter(
+        (neighbor) => neighbor.owner === nation.id,
+      ).length;
+      const neutralNeighbors = this.neighbors(cell).filter(
+        (neighbor) => neighbor.owner === null,
+      ).length;
       const centrality =
         1 -
         Math.min(
@@ -351,13 +357,20 @@ export class TerritoryState {
             Math.hypot(WORLD_WIDTH / 2, WORLD_DEPTH / 2),
         );
       const noise =
-        hash3(cell.id, this.version, nation.capitalCol + nation.capitalRow) *
-        90;
+        hash3(
+          cell.id,
+          this.version,
+          nation.capitalCol + nation.capitalRow,
+        ) - 0.5;
 
+      // Prefer compact blobs. One-neighbor "tentacles" are possible but
+      // strongly disfavored unless no better frontier exists.
       const score =
-        distanceFromCapital * 0.035 +
-        centrality * 85 +
-        noise;
+        sameOwnerNeighbors * 155 +
+        neutralNeighbors * 10 -
+        distanceFromCapital * 0.072 +
+        centrality * 22 +
+        noise * 34;
 
       if (score > bestScore) {
         best = cell;
