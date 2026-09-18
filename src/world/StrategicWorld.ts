@@ -15,11 +15,10 @@ export interface StrategicRoad {
   readonly bend: number;
 }
 
-export interface StrategicTerritory {
+export interface NationDefinition {
   readonly id: string;
   readonly name: string;
   readonly color: number;
-  readonly polygon: readonly XZ[];
   readonly capital: StrategicSettlement;
   readonly settlements: readonly StrategicSettlement[];
   readonly roads: readonly StrategicRoad[];
@@ -29,7 +28,12 @@ function p([x, z]: XZ): XZ {
   return [x * MAP_SCALE, z * MAP_SCALE];
 }
 
-function settlement(id: string, name: string, kind: SettlementKind, position: XZ): StrategicSettlement {
+function settlement(
+  id: string,
+  name: string,
+  kind: SettlementKind,
+  position: XZ,
+): StrategicSettlement {
   return { id, name, kind, position: p(position) };
 }
 
@@ -37,24 +41,15 @@ function road(from: XZ, to: XZ, bend: number): StrategicRoad {
   return { from: p(from), to: p(to), bend };
 }
 
-function territory(
+function nation(
   id: string,
   name: string,
   color: number,
-  polygon: readonly XZ[],
   capital: StrategicSettlement,
   settlements: readonly StrategicSettlement[],
   roads: readonly StrategicRoad[],
-): StrategicTerritory {
-  return {
-    id,
-    name,
-    color,
-    polygon: polygon.map(p),
-    capital,
-    settlements,
-    roads,
-  };
+): NationDefinition {
+  return { id, name, color, capital, settlements, roads };
 }
 
 const valmereCapital = settlement('valmere-capital', 'Crownford', 'capital', [-27, 21]);
@@ -63,12 +58,11 @@ const thalorCapital = settlement('thalor-capital', 'Suncrest', 'capital', [4, -1
 const drakarCapital = settlement('drakar-capital', 'Redspire', 'capital', [39, 21]);
 const orvanCapital = settlement('orvan-capital', 'Shadowfen', 'capital', [43, -22]);
 
-export const STRATEGIC_TERRITORIES: readonly StrategicTerritory[] = [
-  territory(
+export const NATIONS: readonly NationDefinition[] = [
+  nation(
     'valmere',
     'VALMERE',
     0x4f82dd,
-    [[-78, 52], [0, 52], [14, 10], [-8, 8], [-18, -12], [-78, -4]],
     valmereCapital,
     [
       settlement('valmere-ravenstead', 'Ravenstead', 'town', [-49, 25]),
@@ -81,11 +75,10 @@ export const STRATEGIC_TERRITORIES: readonly StrategicTerritory[] = [
       road([-27, 21], [-37, 9], 0.14),
     ],
   ),
-  territory(
+  nation(
     'eldwood',
     'ELDWOOD',
     0x4f8b5a,
-    [[-78, -4], [-18, -12], [5, -20], [-6, -52], [-78, -52]],
     eldwoodCapital,
     [
       settlement('eldwood-mossford', 'Mossford', 'town', [-56, -6]),
@@ -98,11 +91,10 @@ export const STRATEGIC_TERRITORIES: readonly StrategicTerritory[] = [
       road([-38, -13], [-18, -18], -0.12),
     ],
   ),
-  territory(
+  nation(
     'thalor',
     'THALOR',
     0xd3aa3f,
-    [[-18, -12], [-8, 8], [14, 10], [26, -8], [34, -28], [10, -52], [-6, -52], [5, -20]],
     thalorCapital,
     [
       settlement('thalor-westmere', 'Westmere', 'town', [-12, -5]),
@@ -115,11 +107,10 @@ export const STRATEGIC_TERRITORIES: readonly StrategicTerritory[] = [
       road([4, -17], [8, -31], 0.11),
     ],
   ),
-  territory(
+  nation(
     'drakar',
     'DRAKAR',
     0xc75b52,
-    [[0, 52], [78, 52], [78, 1], [26, -8], [14, 10]],
     drakarCapital,
     [
       settlement('drakar-ironhold', 'Ironhold', 'town', [21, 29]),
@@ -132,11 +123,10 @@ export const STRATEGIC_TERRITORIES: readonly StrategicTerritory[] = [
       road([39, 21], [38, 5], -0.1),
     ],
   ),
-  territory(
+  nation(
     'orvan',
     'ORVAN',
     0x7b5aaa,
-    [[26, -8], [78, 1], [78, -52], [10, -52], [34, -28]],
     orvanCapital,
     [
       settlement('orvan-highridge', 'Highridge', 'town', [28, -14]),
@@ -151,4 +141,4 @@ export const STRATEGIC_TERRITORIES: readonly StrategicTerritory[] = [
   ),
 ] as const;
 
-export const STRATEGIC_ROADS: readonly StrategicRoad[] = STRATEGIC_TERRITORIES.flatMap((item) => item.roads);
+export const STRATEGIC_ROADS: readonly StrategicRoad[] = NATIONS.flatMap((item) => item.roads);
