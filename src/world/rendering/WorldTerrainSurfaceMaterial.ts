@@ -181,13 +181,99 @@ vec3 terrainFilteredSample( sampler2D tex, vec2 uv ) {
   return texture2D( tex, uv, 1.35 ).rgb;
 }
 
+vec2 terrainPatchRandom( vec2 cell, float seed ) {
+  return vec2(
+    terrainHash( cell + vec2( seed * 17.13 + 3.7, seed * 5.91 + 11.2 ) ),
+    terrainHash( cell + vec2( seed * 7.31 + 19.4, seed * 13.47 + 2.6 ) )
+  );
+}
+
+vec2 terrainPatchUv( vec2 uv, vec2 cell, float seed ) {
+  vec2 randomValue = terrainPatchRandom( cell, seed );
+  float quarterTurn = floor( randomValue.x * 4.0 ) * 1.57079632679;
+  float mirrorSign = mix(
+    -1.0,
+    1.0,
+    step( 0.5, terrainHash( cell + vec2( seed * 23.7 + 5.4, seed * 3.9 + 17.8 ) ) )
+  );
+  vec2 transformed = vec2( uv.x * mirrorSign, uv.y );
+  transformed = terrainRotation( quarterTurn ) * transformed;
+  return transformed + randomValue * 31.0;
+}
+
+float terrainPatchWeight( vec2 patchFraction ) {
+  vec2 edgeDistance = min( patchFraction, 1.0 - patchFraction );
+  float nearestEdge = min( edgeDistance.x, edgeDistance.y );
+  return 0.08 + smoothstep( 0.04, 0.30, nearestEdge );
+}
+
+vec3 terrainStochasticPatchSample(
+  sampler2D tex,
+  vec2 uv,
+  vec2 worldXZ,
+  float seed,
+  float patchSize,
+  float bias
+) {
+  // Two offset world-space patch grids overlap. Each patch independently
+  // rotates/mirrors/offsets the original photo texture, while the grids crossfade
+  // near patch edges so no hard seam is introduced.
+  vec2 patchA = worldXZ / patchSize;
+  vec2 cellA = floor( patchA );
+  vec2 fractionA = fract( patchA );
+
+  vec2 patchB = patchA + vec2( 0.5 );
+  vec2 cellB = floor( patchB );
+  vec2 fractionB = fract( patchB );
+
+  float weightA = terrainPatchWeight( fractionA );
+  float weightB = terrainPatchWeight( fractionB );
+
+  vec3 sampleA = texture2D(
+    tex,
+    terrainPatchUv( uv, cellA, seed ),
+    bias
+  ).rgb;
+  vec3 sampleB = texture2D(
+    tex,
+    terrainPatchUv( uv, cellB, seed + 9.37 ),
+    bias
+  ).rgb;
+
+  return ( sampleA * weightA + sampleB * weightB )
+    / max( weightA + weightB, 0.0001 );
+}
+
 vec3 terrainTriplanar( sampler2D tex, vec3 position, vec3 normal, float scale ) {
   vec3 blend = pow( abs( normalize( normal ) ), vec3( 4.0 ) );
   blend /= max( blend.x + blend.y + blend.z, 0.0001 );
   float worldScale = terrainRepeat / terrainWorldWidth * scale;
-  vec3 xSample = texture2D( tex, position.zy * worldScale + vec2( 4.7, 8.1 ), 1.15 ).rgb;
-  vec3 ySample = texture2D( tex, position.xz * worldScale + vec2( 12.3, 1.9 ), 1.15 ).rgb;
-  vec3 zSample = texture2D( tex, position.xy * worldScale + vec2( 2.6, 14.2 ), 1.15 ).rgb;
+  vec2 worldXZ = position.xz;
+
+  vec3 xSample = terrainStochasticPatchSample(
+    tex,
+    position.zy * worldScale + vec2( 4.7, 8.1 ),
+    worldXZ,
+    4.1,
+    9.5,
+    1.15
+  );
+  vec3 ySample = terrainStochasticPatchSample(
+    tex,
+    position.xz * worldScale + vec2( 12.3, 1.9 ),
+    worldXZ,
+    5.3,
+    9.5,
+    1.15
+  );
+  vec3 zSample = terrainStochasticPatchSample(
+    tex,
+    position.xy * worldScale + vec2( 2.6, 14.2 ),
+    worldXZ,
+    6.7,
+    9.5,
+    1.15
+  );
   return xSample * blend.x + ySample * blend.y + zSample * blend.z;
 }
 
@@ -353,16 +439,49 @@ vec3 grassColor = terrainFilteredSample( terrainGrass, grassUv );
 vec3 dryForestColor = terrainFilteredSample( terrainDryForest, dryForestUv );
 vec3 forestColor = terrainFilteredSample( terrainForest, forestUv );
 vec3 mossRockColor = terrainFilteredSample( terrainMossRock, mossUv );
+if ( terrainSecondary.x > 0.002 ) {
+  mossRockColor = terrainStochasticPatchSample(
+    terrainMossRock,
+    mossUv,
+    terrainXZ,
+    1.9,
+    11.0,
+    1.35
+  );
+}
 vec3 dirtColor = terrainFilteredSample( terrainDirt, dirtUv );
 vec3 mudColor = terrainFilteredSample( terrainMud, mudUv );
 vec3 rockGroundColor = terrainFilteredSample( terrainRockGround, rockUv );
-vec3 cliffColor = terrainTriplanar(
-  terrainCliffRock,
-  vTerrainLocalPosition,
-  vTerrainLocalNormal,
-  0.74
-);
+if ( terrainPrimary.w > 0.002 ) {
+  rockGroundColor = terrainStochasticPatchSample(
+    terrainRockGround,
+    rockUv,
+    terrainXZ,
+    2.7,
+    10.0,
+    1.35
+  );
+}
+vec3 cliffColor = vec3( 0.0 );
+if ( terrainSecondary.y > 0.002 ) {
+  cliffColor = terrainTriplanar(
+    terrainCliffRock,
+    vTerrainLocalPosition,
+    vTerrainLocalNormal,
+    0.74
+  );
+}
 vec3 sandColor = terrainFilteredSample( terrainCoastSand, sandUv );
+if ( terrainSecondary.z > 0.002 ) {
+  sandColor = terrainStochasticPatchSample(
+    terrainCoastSand,
+    sandUv,
+    terrainXZ,
+    7.4,
+    8.0,
+    1.35
+  );
+}
 vec3 snowColor = terrainFilteredSample( terrainSnow, snowUv );
 
 float grassMacroVariation = terrainNoise( terrainXZ * 0.014 + vec2( 6.8, -3.1 ) );
@@ -407,7 +526,7 @@ diffuseColor.rgb *= terrainAlbedo;`,
   };
 
   material.customProgramCacheKey = () =>
-    `world-terrain-natural-blend-v5:${repeat}:${seaLevel}:${options.controlMapSize ?? 512}`;
+    `world-terrain-natural-blend-v6-stochastic:${repeat}:${seaLevel}:${options.controlMapSize ?? 512}`;
 
   return material;
 }
