@@ -207,6 +207,16 @@ Rules:
 - avoid unnecessary transparency
 - keep DPR / renderer resolution under control on mobile
 
+
+## 1.12 Deployment
+
+Production deployment rule:
+- GitHub Pages is the default production deployment path
+- do not enable Vercel automatic deployments
+- do not treat a Vercel preview/check as required CI
+- use Vercel only when the user explicitly asks for it for a specific task
+- if a stale Vercel GitHub integration produces a failed status, do not change game code to satisfy it; remove or disable that integration separately when authorized
+
 ---
 
 # 2. Core game pillars — locked
