@@ -1,4 +1,10 @@
-import { SRGBColorSpace, Scene, WebGLRenderer, type Camera } from "three";
+import {
+  PCFShadowMap,
+  SRGBColorSpace,
+  Scene,
+  WebGLRenderer,
+  type Camera,
+} from "three";
 
 export class RendererShell {
   public readonly canvas: HTMLCanvasElement;
@@ -10,7 +16,11 @@ export class RendererShell {
       alpha: false,
       powerPreference: "high-performance",
     });
+
     this.renderer.outputColorSpace = SRGBColorSpace;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = PCFShadowMap;
+
     this.canvas = this.renderer.domElement;
     this.canvas.className = "game-canvas";
     this.canvas.tabIndex = 0;
