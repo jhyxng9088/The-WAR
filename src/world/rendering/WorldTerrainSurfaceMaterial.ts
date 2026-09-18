@@ -352,20 +352,20 @@ void terrainSurfaceWeights(
   float broadPatch = terrainNoise( worldXZ * 0.028 + vec2( 19.4, -6.8 ) ) - 0.5;
 
   float forestFloor = clamp(
-    ( regionalMoisture - 0.42 ) * 1.24
-      + fertility * 0.54
-      + floodplain * 0.26
-      - highland * 0.28
-      - riverShelf * 0.08
-      + boundaryNoiseB * 0.12 * lowland,
+    ( regionalMoisture - 0.34 ) * 1.46
+      + fertility * 0.64
+      + floodplain * 0.24
+      - highland * 0.26
+      - riverShelf * 0.06
+      + boundaryNoiseB * 0.16 * lowland,
     0.0,
     1.0
   );
 
-  float coastLow = 1.0 - smoothstep( 0.22, 1.28, height );
+  float coastLow = 1.0 - smoothstep( 0.10, 0.72, height );
   float coastal = coastInfluence * coastLow * landMask;
   float rockyCoast = coastal * clamp( roughnessValue * 0.90 + steep * 0.88, 0.0, 1.0 );
-  float sand = coastal * ( 1.0 - rockyCoast ) * ( 0.58 + regionalDryness * 0.42 );
+  float sand = coastal * ( 1.0 - rockyCoast ) * ( 0.44 + regionalDryness * 0.30 );
   wetShoreFactor = clamp( coastal * regionalMoisture * ( 1.0 - rockyCoast ), 0.0, 1.0 );
 
   float snow = smoothstep( 10.7, 15.2, height ) * mountain * ( 1.0 - steep * 0.18 );
@@ -397,18 +397,18 @@ void terrainSurfaceWeights(
   mossRock *= 1.0 - max( snow * 0.90, sand );
 
   float dirt = clamp(
-    regionalDryness * lowland * 0.58
-      + highland * ( 1.0 - regionalMoisture ) * 0.54
-      + roughnessValue * 0.18
-      + boundaryNoiseA * lowland * 0.14,
+    regionalDryness * lowland * 0.43
+      + highland * ( 1.0 - regionalMoisture ) * 0.48
+      + roughnessValue * 0.14
+      + boundaryNoiseA * lowland * 0.10,
     0.0,
     1.0
   );
   dirt *= 1.0 - max( max( snow, sand ), cliff * 0.82 );
 
   float forest = clamp(
-    forestFloor * lowland * ( 0.58 + regionalMoisture * 0.42 )
-      + boundaryNoiseB * regionalMoisture * lowland * 0.08,
+    forestFloor * lowland * ( 0.72 + regionalMoisture * 0.40 )
+      + boundaryNoiseB * regionalMoisture * lowland * 0.12,
     0.0,
     1.0
   );
@@ -516,10 +516,16 @@ forestColor = mix( forestColor, dryForestColor, dryVariant * 0.66 );
 dirtColor = mix( dirtColor, mudColor, mudVariant * ( 1.0 - terrainRegionalDryness * 0.58 ) );
 
 // Keep climate readable without painting broad vertex-color gradients back over the photos.
-grassColor *= mix( vec3( 1.03, 0.94, 0.84 ), vec3( 0.92, 1.04, 0.90 ), terrainRegionalMoisture );
-forestColor *= mix( vec3( 0.96, 0.91, 0.84 ), vec3( 0.91, 1.02, 0.90 ), terrainRegionalMoisture );
-dirtColor *= mix( vec3( 0.92, 0.88, 0.82 ), vec3( 1.04, 0.95, 0.84 ), terrainRegionalDryness );
-sandColor *= mix( 1.0, 0.74, terrainWetShoreFactor * 0.58 );
+grassColor *= mix( vec3( 0.98, 0.96, 0.83 ), vec3( 0.86, 1.07, 0.86 ), terrainRegionalMoisture );
+forestColor *= mix( vec3( 0.88, 0.91, 0.76 ), vec3( 0.76, 0.99, 0.76 ), terrainRegionalMoisture );
+forestColor *= vec3( 0.82, 0.93, 0.80 );
+dirtColor *= mix( vec3( 0.91, 0.89, 0.83 ), vec3( 1.00, 0.94, 0.83 ), terrainRegionalDryness );
+sandColor *= mix( 0.94, 0.72, terrainWetShoreFactor * 0.58 );
+
+float rockGroundLuma = dot( rockGroundColor, vec3( 0.2126, 0.7152, 0.0722 ) );
+rockGroundColor = mix( rockGroundColor, vec3( rockGroundLuma * 0.92 ), 0.26 );
+float cliffLuma = dot( cliffColor, vec3( 0.2126, 0.7152, 0.0722 ) );
+cliffColor = mix( cliffColor, vec3( cliffLuma * 0.90 ), 0.30 );
 
 vec3 terrainAlbedo =
   grassColor * terrainPrimary.x +
@@ -544,7 +550,7 @@ diffuseColor.rgb *= terrainAlbedo;`,
   };
 
   material.customProgramCacheKey = () =>
-    `world-terrain-natural-blend-v7-cliff-scale:${repeat}:${seaLevel}:${options.controlMapSize ?? 512}`;
+    `world-terrain-natural-blend-v8-biome-mass:${repeat}:${seaLevel}:${options.controlMapSize ?? 512}`;
 
   return material;
 }

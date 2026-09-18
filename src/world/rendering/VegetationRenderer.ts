@@ -43,13 +43,13 @@ export interface VegetationController {
   dispose(): void;
 }
 
-const TREE_SPACING = 2.55;
-const TREE_CHUNK_SIZE = 70;
+const TREE_SPACING = 1.82;
+const TREE_CHUNK_SIZE = 58;
 const HIGH_LOD_MAX_CAMERA_Y = 78;
 const MID_LOD_MAX_CAMERA_Y = 148;
 const TREE_MODEL_HEIGHT: Record<TreeSpecies, number> = {
-  conifer: 0.76,
-  deciduous: 0.68,
+  conifer: 0.88,
+  deciduous: 0.82,
 };
 
 const SETTLEMENT_CLEAR_RADIUS_SQ = 3.4 * 3.4;
@@ -130,24 +130,32 @@ function collectTrees(): TreePoint[] {
 
   for (let x = -WORLD_HALF_WIDTH + 5; x <= WORLD_HALF_WIDTH - 5; x += TREE_SPACING) {
     for (let z = -WORLD_HALF_DEPTH + 5; z <= WORLD_HALF_DEPTH - 5; z += TREE_SPACING) {
-      const px = x + (deterministic01(x, z, 17) - 0.5) * TREE_SPACING * 0.94;
-      const pz = z + (deterministic01(x, z, 23) - 0.5) * TREE_SPACING * 0.94;
+      const px = x + (deterministic01(x, z, 17) - 0.5) * TREE_SPACING * 0.92;
+      const pz = z + (deterministic01(x, z, 23) - 0.5) * TREE_SPACING * 0.92;
       if (!isLandAt(px, pz) || isNearSettlement(px, pz)) continue;
 
       const density = forestDensityAt(px, pz);
-      const chance = THREE.MathUtils.clamp((density - 0.43) * 0.82, 0, 0.42);
-      if (density < 0.49 || deterministic01(px, pz, 29) > chance) continue;
+      const cluster = forestClusterAt(px, pz);
+      const suitability = smoothstep01(0.44, 0.74, density);
+      const clusterCore = smoothstep01(0.40, 0.68, cluster + (density - 0.5) * 0.34);
+      const chance = THREE.MathUtils.clamp(
+        0.03 + suitability * clusterCore * 0.94,
+        0,
+        0.92,
+      );
+      if (density < 0.43 || deterministic01(px, pz, 29) > chance) continue;
 
       const mountain = mountainStrengthAt(px, pz);
       const coniferBias = deterministic01(px, pz, 41);
       const species: TreeSpecies =
-        mountain > 0.38 || coniferBias > 0.79 ? 'conifer' : 'deciduous';
+        mountain > 0.32 || coniferBias > 0.84 ? 'conifer' : 'deciduous';
 
+      const interiorBoost = 0.90 + clusterCore * 0.16;
       points.push({
         x: px,
         y: terrainHeight(px, pz) - 0.015,
         z: pz,
-        scale: 0.82 + deterministic01(px, pz, 31) * 0.34,
+        scale: interiorBoost * (0.86 + deterministic01(px, pz, 31) * 0.30),
         rotation: deterministic01(px, pz, 37) * Math.PI * 2,
         species,
         colorMix: deterministic01(px, pz, 43),
@@ -165,6 +173,38 @@ function isNearSettlement(x: number, z: number): boolean {
     if (dx * dx + dz * dz < SETTLEMENT_CLEAR_RADIUS_SQ) return true;
   }
   return false;
+}
+
+function forestClusterAt(x: number, z: number): number {
+  const broad = smoothValueNoise(x / 27, z / 27, 71);
+  const medium = smoothValueNoise(x / 13, z / 13, 83);
+  const fine = smoothValueNoise(x / 6.5, z / 6.5, 97);
+  return THREE.MathUtils.clamp(broad * 0.56 + medium * 0.31 + fine * 0.13, 0, 1);
+}
+
+function smoothValueNoise(x: number, z: number, seed: number): number {
+  const x0 = Math.floor(x);
+  const z0 = Math.floor(z);
+  const tx = smoothCurve(x - x0);
+  const tz = smoothCurve(z - z0);
+
+  const a = deterministic01(x0, z0, seed);
+  const b = deterministic01(x0 + 1, z0, seed);
+  const c = deterministic01(x0, z0 + 1, seed);
+  const d = deterministic01(x0 + 1, z0 + 1, seed);
+
+  const top = THREE.MathUtils.lerp(a, b, tx);
+  const bottom = THREE.MathUtils.lerp(c, d, tx);
+  return THREE.MathUtils.lerp(top, bottom, tz);
+}
+
+function smoothCurve(value: number): number {
+  return value * value * (3 - 2 * value);
+}
+
+function smoothstep01(min: number, max: number, value: number): number {
+  const t = THREE.MathUtils.clamp((value - min) / Math.max(0.0001, max - min), 0, 1);
+  return t * t * (3 - 2 * t);
 }
 
 async function loadTreeAssets(): Promise<TreeAssetSet> {
