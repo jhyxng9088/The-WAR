@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { deterministic01, isLandAt, terrainHeight, type XZ } from '../WorldField';
-import { STRATEGIC_TERRITORIES, type StrategicSettlement } from '../StrategicWorld';
+import { NATIONS, type StrategicSettlement } from '../StrategicWorld';
 
 interface BuildingInstance {
   readonly position: THREE.Vector3;
@@ -29,10 +29,9 @@ export function addSettlements(scene: THREE.Scene): void {
   const buildings: BuildingInstance[] = [];
   const fields: FieldInstance[] = [];
 
-  for (const territory of STRATEGIC_TERRITORIES) {
-    const settlements = [territory.capital, ...territory.settlements];
-    for (const item of settlements) collectSettlement(item, territory.color, buildings, fields);
-    addTerritoryLabel(scene, territory.name, territory.capital.position, territory.color);
+  for (const nation of NATIONS) {
+    collectSettlement(nation.capital, nation.color, buildings, fields);
+    addTerritoryLabel(scene, nation.name, nation.capital.position, nation.color);
   }
 
   addFieldInstances(scene, fields);
@@ -227,17 +226,17 @@ function addCapitalKeeps(scene: THREE.Scene): void {
   const keeps = new THREE.InstancedMesh(
     keepGeometry,
     keepMaterial,
-    STRATEGIC_TERRITORIES.length,
+    NATIONS.length,
   );
   const towers = new THREE.InstancedMesh(
     towerGeometry,
     towerMaterial,
-    STRATEGIC_TERRITORIES.length * 4,
+    NATIONS.length * 4,
   );
   const roofs = new THREE.InstancedMesh(
     roofGeometry,
     roofMaterial,
-    STRATEGIC_TERRITORIES.length * 4,
+    NATIONS.length * 4,
   );
   keeps.name = 'stylized-capital-keeps';
   towers.name = 'stylized-capital-towers';
@@ -249,7 +248,7 @@ function addCapitalKeeps(scene: THREE.Scene): void {
   const wallBase = new THREE.Color(0xd9d3bd);
   let towerIndex = 0;
 
-  STRATEGIC_TERRITORIES.forEach((territory, territoryIndex) => {
+  NATIONS.forEach((territory, territoryIndex) => {
     const [x, z] = territory.capital.position;
     const baseY = terrainHeight(x, z);
     const territoryColor = new THREE.Color(territory.color);
