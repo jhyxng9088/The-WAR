@@ -104,7 +104,7 @@ export function createTerritoryRenderer(
       return;
     }
 
-    const cell = territory.getCells().find((item) => item.id === activeExpansion.cellId);
+    const cell = territory.getCellById(activeExpansion.cellId);
     const nation = territory.getNation(activeExpansion.nationId);
     if (!cell || !nation) {
       progress.visible = false;
