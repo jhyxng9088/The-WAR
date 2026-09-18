@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import { WorldCamera } from '../camera/WorldCamera';
 import { WorldInput } from '../input/WorldInput';
-import { createPrototypeWorld } from '../world/createPrototypeWorld';
+import {
+  createPrototypeWorld,
+  type PrototypeWorldController,
+} from '../world/createPrototypeWorld';
 import { RenderPerformance } from './RenderPerformance';
 
 export class Game {
@@ -10,6 +13,8 @@ export class Game {
   private readonly camera: WorldCamera;
   private readonly input: WorldInput;
   private readonly performance: RenderPerformance;
+  private worldController: PrototypeWorldController | null = null;
+  private disposed = false;
   private frameId: number | null = null;
   private resizeFrameId: number | null = null;
 
@@ -33,7 +38,19 @@ export class Game {
     this.input = new WorldInput(canvas, this.camera);
     this.performance = new RenderPerformance(this.renderer);
 
-    void createPrototypeWorld(this.scene);
+    void createPrototypeWorld(this.scene)
+      .then((controller) => {
+        if (this.disposed) {
+          controller.dispose();
+          return;
+        }
+        this.worldController = controller;
+        controller.update(this.camera.camera);
+      })
+      .catch((error: unknown) => {
+        console.error('THE WAR world initialization failed.', error);
+      });
+
     this.resize();
 
     window.addEventListener('resize', this.queueResize, { passive: true });
@@ -46,6 +63,7 @@ export class Game {
     if (this.frameId !== null) return;
     const render = (timestamp: number): void => {
       this.input.update();
+      this.worldController?.update(this.camera.camera);
       this.performance.sample(timestamp);
       this.renderer.render(this.scene, this.camera.camera);
       this.frameId = requestAnimationFrame(render);
@@ -54,10 +72,13 @@ export class Game {
   }
 
   dispose(): void {
+    this.disposed = true;
     if (this.frameId !== null) cancelAnimationFrame(this.frameId);
     if (this.resizeFrameId !== null) cancelAnimationFrame(this.resizeFrameId);
     this.frameId = null;
     this.resizeFrameId = null;
+    this.worldController?.dispose();
+    this.worldController = null;
     this.input.dispose();
     window.removeEventListener('resize', this.queueResize);
     window.removeEventListener('orientationchange', this.queueResize);
