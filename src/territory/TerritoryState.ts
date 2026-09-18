@@ -32,7 +32,8 @@ const GRID_MIN_X = -TERRITORY_GRID_WIDTH / 2;
 const GRID_MIN_Z = -TERRITORY_GRID_DEPTH / 2;
 const EXPANSION_DURATION_SECONDS = 1.0;
 const INITIAL_RADIUS = 2.55;
-const VISUAL_JITTER = 0.24;
+const VISUAL_JITTER = 0.16;
+const EDGE_BEND = 0.12;
 
 export class TerritoryState {
   public readonly cells: TerritoryCell[] = [];
@@ -151,8 +152,8 @@ export class TerritoryState {
       (z - GRID_MIN_Z) / TERRITORY_CELL_SIZE,
     );
 
-    let best: TerritoryCell | null = null;
-    let bestDistance = Number.POSITIVE_INFINITY;
+    let nearest: TerritoryCell | null = null;
+    let nearestDistance = Number.POSITIVE_INFINITY;
 
     for (let rowOffset = -1; rowOffset <= 1; rowOffset += 1) {
       for (let colOffset = -1; colOffset <= 1; colOffset += 1) {
@@ -162,34 +163,63 @@ export class TerritoryState {
         );
         if (!candidate) continue;
 
+        const polygon = this.cellPolygon(candidate);
+        if (pointInPolygon(x, z, polygon)) return candidate;
+
         const center = this.cellCenter(candidate);
         const distance =
           (center.x - x) * (center.x - x) +
           (center.z - z) * (center.z - z);
 
-        if (distance < bestDistance) {
-          best = candidate;
-          bestDistance = distance;
+        if (distance < nearestDistance) {
+          nearest = candidate;
+          nearestDistance = distance;
         }
       }
     }
 
-    return best;
+    return nearest;
   }
 
   public cellCenter(cell: TerritoryCell): { x: number; z: number } {
-    const jitter = visualOffset(cell.col, cell.row);
+    const polygon = this.cellPolygon(cell);
+    let x = 0;
+    let z = 0;
+
+    for (const point of polygon) {
+      x += point.x;
+      z += point.z;
+    }
 
     return {
-      x:
-        GRID_MIN_X +
-        (cell.col + 0.5 + jitter.x * VISUAL_JITTER) *
-          TERRITORY_CELL_SIZE,
-      z:
-        GRID_MIN_Z +
-        (cell.row + 0.5 + jitter.z * VISUAL_JITTER) *
-          TERRITORY_CELL_SIZE,
+      x: x / polygon.length,
+      z: z / polygon.length,
     };
+  }
+
+  public cellPolygon(
+    cell: TerritoryCell,
+  ): readonly { x: number; z: number }[] {
+    const topLeft = gridVertex(cell.col, cell.row);
+    const topRight = gridVertex(cell.col + 1, cell.row);
+    const bottomRight = gridVertex(cell.col + 1, cell.row + 1);
+    const bottomLeft = gridVertex(cell.col, cell.row + 1);
+
+    return [
+      topLeft,
+      horizontalMidpoint(cell.col, cell.row, topLeft, topRight),
+      topRight,
+      verticalMidpoint(cell.col + 1, cell.row, topRight, bottomRight),
+      bottomRight,
+      horizontalMidpoint(
+        cell.col,
+        cell.row + 1,
+        bottomLeft,
+        bottomRight,
+      ),
+      bottomLeft,
+      verticalMidpoint(cell.col, cell.row, topLeft, bottomLeft),
+    ];
   }
 
   public cellAt(col: number, row: number): TerritoryCell | null {
@@ -388,6 +418,92 @@ export class TerritoryState {
     const capital = this.cellAt(nation.capitalCol, nation.capitalRow);
     if (capital) capital.owner = nation.id;
   }
+}
+
+function gridVertex(
+  col: number,
+  row: number,
+): { x: number; z: number } {
+  const offset = visualOffset(col, row);
+  const isLeftOrRight = col === 0 || col === TERRITORY_COLS;
+  const isTopOrBottom = row === 0 || row === TERRITORY_ROWS;
+
+  return {
+    x:
+      GRID_MIN_X +
+      (col +
+        (isLeftOrRight ? 0 : offset.x * VISUAL_JITTER)) *
+        TERRITORY_CELL_SIZE,
+    z:
+      GRID_MIN_Z +
+      (row +
+        (isTopOrBottom ? 0 : offset.z * VISUAL_JITTER)) *
+        TERRITORY_CELL_SIZE,
+  };
+}
+
+function horizontalMidpoint(
+  col: number,
+  row: number,
+  left: { x: number; z: number },
+  right: { x: number; z: number },
+): { x: number; z: number } {
+  const bend =
+    (hash2(col * 13 + 71, row * 17 + 31) * 2 - 1) *
+    EDGE_BEND *
+    TERRITORY_CELL_SIZE;
+
+  return {
+    x: (left.x + right.x) * 0.5,
+    z: (left.z + right.z) * 0.5 + bend,
+  };
+}
+
+function verticalMidpoint(
+  col: number,
+  row: number,
+  top: { x: number; z: number },
+  bottom: { x: number; z: number },
+): { x: number; z: number } {
+  const bend =
+    (hash2(col * 19 + 43, row * 23 + 97) * 2 - 1) *
+    EDGE_BEND *
+    TERRITORY_CELL_SIZE;
+
+  return {
+    x: (top.x + bottom.x) * 0.5 + bend,
+    z: (top.z + bottom.z) * 0.5,
+  };
+}
+
+function pointInPolygon(
+  x: number,
+  z: number,
+  polygon: readonly { x: number; z: number }[],
+): boolean {
+  let inside = false;
+
+  for (
+    let index = 0, previous = polygon.length - 1;
+    index < polygon.length;
+    previous = index, index += 1
+  ) {
+    const currentPoint = polygon[index];
+    const previousPoint = polygon[previous];
+    if (!currentPoint || !previousPoint) continue;
+
+    const intersects =
+      currentPoint.z > z !== previousPoint.z > z &&
+      x <
+        ((previousPoint.x - currentPoint.x) *
+          (z - currentPoint.z)) /
+          (previousPoint.z - currentPoint.z) +
+          currentPoint.x;
+
+    if (intersects) inside = !inside;
+  }
+
+  return inside;
 }
 
 function visualOffset(
