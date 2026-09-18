@@ -57,20 +57,30 @@ button, canvas { -webkit-tap-highlight-color: transparent; }
   padding: 9px 11px;
   border: 1px solid rgb(255 255 255 / 10%);
   border-radius: 12px;
-  background: rgb(13 19 22 / 72%);
+  background: rgb(13 19 22 / 70%);
   backdrop-filter: blur(12px);
   color: rgb(244 247 242 / 92%);
   font-size: 12px;
   line-height: 1.35;
   pointer-events: none;
 }
-.foundation-badge strong {
+.foundation-badge strong,
+.foundation-badge .diagnostic-context,
+.foundation-badge [data-role="metrics"] {
   display: block;
-  margin-bottom: 2px;
+}
+.foundation-badge strong {
+  margin-bottom: 3px;
   font-size: 12px;
   letter-spacing: .04em;
 }
-.foundation-badge [data-role="metrics"] { color: rgb(217 226 211 / 70%); }
+.foundation-badge .diagnostic-context {
+  color: rgb(226 233 219 / 82%);
+}
+.foundation-badge [data-role="metrics"] {
+  margin-top: 1px;
+  color: rgb(217 226 211 / 60%);
+}
 .gesture-hint {
   position: absolute;
   z-index: 10;
@@ -82,7 +92,7 @@ button, canvas { -webkit-tap-highlight-color: transparent; }
   transform: translateX(-50%);
   border: 1px solid rgb(255 255 255 / 8%);
   border-radius: 999px;
-  background: rgb(13 19 22 / 64%);
+  background: rgb(13 19 22 / 60%);
   color: rgb(236 241 232 / 72%);
   font-size: 11px;
   text-align: center;

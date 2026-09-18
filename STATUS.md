@@ -4,41 +4,33 @@ Updated: 2026-09-18
 
 ## Current stage
 
-**Stage 0 — Foundation / clean project shell — COMPLETE**
+**Stage 1 — World + locked low-poly visual baseline — IN PROGRESS**
 
 ### Active slice
 
-Stage 0 is merged to `main` and deployed to GitHub Pages.
+First Stage 1 visual pass:
+- continent-scale terrain field
+- uplifted plateaus / ridges / basins / passes / valleys
+- three river corridors
+- grouped forest masses
+- simple coast / sea
+- deliberately tiny settlement scale references
+- strategic camera retuned for continent scale
+- Stage 0 Apple Maps gesture contract preserved
 
-### Stage 0 checklist
+### Stage 1 review gate
 
-- [x] clean-slate repository confirmed
-- [x] canonical visual / architecture direction present
-- [x] continent-scale and small-prop rules added
-- [x] strategic landform vocabulary added
-- [x] Apple Maps gesture contract added
-- [x] Vite + TypeScript project shell
-- [x] Three.js renderer owner
-- [x] single requestAnimationFrame game loop
-- [x] visualViewport / orientation-aware renderer sizing
-- [x] Apple Maps-style gesture input owner
-- [x] PWA manifest + service worker base
-- [x] Supabase browser configuration isolated from gameplay
-- [x] basic runtime diagnostics
-- [x] PR CI verified
-- [x] squash merge verified
-- [x] GitHub Pages production deploy verified
+This stage is **not complete until the production screen is visually reviewed**.
 
-## Next stage
+Review specifically:
+- does the map feel continent-scale rather than miniature?
+- do buildings and forest elements feel small relative to terrain?
+- are several different strategic regions visible?
+- do uplifted landforms / ridges / basins create interesting geography?
+- does the map avoid one dominant center?
+- do Apple Maps-style gestures remain usable on mobile?
+- is mobile performance acceptable?
 
-**Stage 1 — World + locked low-poly visual baseline**
+## Next action
 
-Do not start Stage 1 automatically.
-
-Stage 1 must prioritize:
-- a genuinely continent-scale map
-- props that are tiny compared with terrain
-- uplifted plateaus, ridges, foothills, escarpments, basins, passes, valleys, lowlands, and coastal plains
-- several different valuable strategic regions rather than one dominant center
-- the locked low-poly visual language
-- the Apple Maps navigation gestures already established in Stage 0
+Deploy this first visual pass to GitHub Pages and review the real screen before further Stage 1 art tuning.
